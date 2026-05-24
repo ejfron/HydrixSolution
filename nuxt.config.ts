@@ -27,6 +27,7 @@ export default defineNuxtConfig({
 
   app: {
     head: {
+      
       link: [
         {
           rel: 'icon',

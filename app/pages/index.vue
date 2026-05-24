@@ -47,26 +47,3 @@ import Pricing from '~/components/landingpage/pricing.vue';
 
 </script>
 
-<style scoped>
-html {
-  scroll-behavior: smooth;
-}
-
-/* Custom scrollbar */
-::-webkit-scrollbar {
-  width: 8px;
-}
-
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
-}
-
-::-webkit-scrollbar-thumb {
-  background: #0ea5e9;
-  border-radius: 4px;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: #0284c7;
-}
-</style>
