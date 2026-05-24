@@ -15,13 +15,13 @@ import { Image, MailCheck, MessageCircle, Droplets, Phone, MapPinCheck } from '@
             </div>
             <p class="text-sm text-gray-400">Pure water, on demand. Smart dispensing for modern living.</p>
             <div class="flex gap-4 mt-4">
-              <a href="#" class="text-gray-400 hover:text-white transition-colors">
+              <a href="mailto:HydrixSolution@gmail.com" class="text-gray-400 hover:text-white transition-colors">
                 <MailCheck />
               </a>
               <a href="#" class="text-gray-400 hover:text-white transition-colors">
                 <Image />
               </a>
-              <a href="#" class="text-gray-400 hover:text-white transition-colors">
+              <a href="https://www.facebook.com/ej.fron16" target="_blank" class="text-gray-400 hover:text-white transition-colors">
                 <MessageCircle />
               </a>
             </div>

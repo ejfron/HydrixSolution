@@ -1,4 +1,4 @@
-<!-- components/Modal/SystemAccessModal.vue -->
+<!-- components/Modal/ContactDeveloper.vue -->
 <script setup lang="ts">
 import {Droplets, ChartArea, ChartNoAxesCombined, GlassWater} from '@lucide/vue'
 defineProps<{
@@ -166,7 +166,8 @@ function closeModal() {
               <button
                 class="flex-1 bg-[#0ea44b] hover:bg-green-700 text-sm cursor-pointer text-white py-4 rounded-2xl font-bold transition"
               >
-                Contact Developer
+              <a href="mailto:HydrixSolution@gmail.com">Contact Developer</a>
+                  
               </button>
 
               <button
