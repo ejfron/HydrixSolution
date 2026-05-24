@@ -27,7 +27,7 @@ const handleLogin = async () => {
     return
   }
 
-  
+  // Use getUser() — reliable in production
   const { data: { user } } = await client.auth.getUser()
 
   if (!user) {
@@ -35,7 +35,6 @@ const handleLogin = async () => {
     return
   }
 
-  // Fix 2: type the profile result
   const { data: profile } = await client
     .from('profiles')
     .select('role')
@@ -43,9 +42,9 @@ const handleLogin = async () => {
     .single<{ role: string }>()
 
   if (profile?.role === 'admin') {
-    router.push('/admin')
+    await navigateTo('/admin')
   } else {
-    router.push('/user')
+    await navigateTo('/user')
   }
 
   loading.value = false
@@ -116,7 +115,14 @@ const handleLogin = async () => {
       <div class="w-full max-w-md">
 
         <div class="lg:hidden text-center mb-8">
-          <h1 class="text-4xl font-black text-[#0ea44b]">💧 Hydrix</h1>
+          <h1 class="text-4xl font-black text-[#0ea44b]">
+            <span>
+              <Droplets :size="50" class="inline text-green-600" />
+            </span>
+            <span>
+              Hydrix
+            </span>
+            </h1>
         </div>
 
         <div class="bg-white rounded-[32px] shadow-2xl border border-gray-100 p-8">

@@ -1,28 +1,26 @@
 import { useSupabaseClient } from '#imports'
 
-export default defineNuxtRouteMiddleware(async () => {
+export default defineNuxtRouteMiddleware(async (to) => {
   const client = useSupabaseClient()
 
-  // Use getUser() which is secure and works on both server and client
+  // Always use getUser() — secure and works in production
   const { data: { user }, error: userError } = await client.auth.getUser()
 
-  console.log('middleware user:', user)
-  console.log('middleware userError:', userError)
-
-  if (!user) {
+  if (userError || !user) {
     return navigateTo('/loginpage')
   }
 
-  const { data: profile, error } = await client
+  const { data: profile, error: profileError } = await client
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single<{ role: string }>()
 
-  console.log('middleware profile:', profile)
-  console.log('middleware error:', error)
+  if (profileError || !profile) {
+    return navigateTo('/loginpage')
+  }
 
-  if (profile?.role !== 'admin') {
+  if (profile.role !== 'admin') {
     return navigateTo('/user')
   }
 })
