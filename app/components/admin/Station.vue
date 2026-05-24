@@ -10,6 +10,7 @@ const users = ref<{
   station_name: string
   email: string
   role: string
+  location: string
   created_at: string
 }[]>([])
 
@@ -29,6 +30,7 @@ const deleting = ref(false)
 const newFullName = ref('')
 const newStationName = ref('')
 const newEmail = ref('')
+const newLocation = ref('')
 const newPassword = ref('')
 const showPassword = ref(false)
 
@@ -37,6 +39,7 @@ const resetForm = () => {
   newStationName.value = ''
   newEmail.value = ''
   newPassword.value = ''
+  newLocation.value = ''
   createError.value = ''
   createSuccess.value = ''
   showPassword.value = false
@@ -56,7 +59,7 @@ const fetchUsers = async () => {
   loading.value = true
   const { data } = await client
     .from('profiles')
-    .select('id, full_name, station_name, email, role, created_at')
+    .select('id, full_name, station_name, email, role, location, created_at')
     .eq('role', 'user')
     .order('created_at', { ascending: false })
 
@@ -329,6 +332,14 @@ onMounted(() => fetchUsers())
                     Water Station Name <span class="text-red-400">*</span>
                   </label>
                   <input v-model="newStationName" type="text" required placeholder="e.g. KRGM Water Station"
+                    class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm">
+                </div>
+
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-2">
+                    Station location<span class="text-red-400">*</span>
+                  </label>
+                  <input v-model="newLocation" type="text" required placeholder="e.g. 123 Main St, City"
                     class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm">
                 </div>
 

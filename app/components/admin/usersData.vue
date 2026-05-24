@@ -9,6 +9,7 @@ const users = ref<{
   station_name: string
   email: string
   role: string
+  location: string
   created_at: string
 }[]>([])
 
@@ -19,7 +20,7 @@ const fetchUsers = async () => {
 
   const { data, error } = await client
     .from('profiles')
-    .select('id, full_name, station_name, email, role, created_at')
+    .select('id, full_name, station_name, email, role, location, created_at')
     .eq('role', 'user')
     .order('created_at', { ascending: false })
 
@@ -66,6 +67,7 @@ onMounted(() => fetchUsers())
           <th class="text-left px-8 py-5">Station Name</th>
           <th class="text-left px-8 py-5">Email</th>
           <th class="text-left px-8 py-5">Role</th>
+          <th class="text-left px-8 py-5">Location</th>
           <th class="text-left px-8 py-5">Joined</th>
         </tr>
       </thead>
@@ -79,11 +81,13 @@ onMounted(() => fetchUsers())
           <td class="px-8 py-6">{{ user.full_name || '—' }}</td>
           <td class="px-8 py-6">{{ user.station_name || '—' }}</td>
           <td class="px-8 py-6">{{ user.email }}</td>
-          <td class="px-8 py-6">
+           <td class="px-8 py-6">
             <span class="px-3 py-1 rounded-full text-xs font-semibold bg-green-100 text-green-700">
               {{ user.role }}
             </span>
           </td>
+          <td class="px-8 py-6">{{ user.location || '—' }}</td>
+         
           <td class="px-8 py-6">
             {{ new Date(user.created_at).toLocaleDateString('en-PH', {
               year: 'numeric', month: 'short', day: 'numeric'
