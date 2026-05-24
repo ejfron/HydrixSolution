@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { Plus, Settings, Droplets, Trash2, X, AlertTriangle } from '@lucide/vue'
+import { Plus, Settings, Droplets, Trash2, X, AlertTriangle, MapPin } from '@lucide/vue'
 import { useSupabaseClient } from '#imports'
 
 const client = useSupabaseClient()
 
-const users = ref<{
+type Profile = {
   id: string
   full_name: string
   station_name: string
@@ -12,7 +12,15 @@ const users = ref<{
   role: string
   location: string
   created_at: string
-}[]>([])
+}
+
+type Transaction = {
+  user_id: string
+  quantity: number
+  total_amount: number
+}
+
+const users = ref<(Profile & { total_sales: number; total_gallons: number })[]>([])
 
 const loading = ref(true)
 const showCreateModal = ref(false)
@@ -20,13 +28,11 @@ const creating = ref(false)
 const createError = ref('')
 const createSuccess = ref('')
 
-// Delete modal
 const showDeleteModal = ref(false)
 const deletingId = ref<string | null>(null)
 const deletingName = ref('')
 const deleting = ref(false)
 
-// Form fields
 const newFullName = ref('')
 const newStationName = ref('')
 const newEmail = ref('')
@@ -45,30 +51,48 @@ const resetForm = () => {
   showPassword.value = false
 }
 
-const openModal = () => {
-  resetForm()
-  showCreateModal.value = true
-}
-
-const closeModal = () => {
-  showCreateModal.value = false
-  resetForm()
-}
+const openModal = () => { resetForm(); showCreateModal.value = true }
+const closeModal = () => { showCreateModal.value = false; resetForm() }
 
 const fetchUsers = async () => {
   loading.value = true
-  const { data } = await client
+
+  const { data: profiles } = await client
     .from('profiles')
     .select('id, full_name, station_name, email, role, location, created_at')
     .eq('role', 'user')
     .order('created_at', { ascending: false })
+    .returns<Profile[]>()
 
-  if (data) users.value = data
+  if (!profiles) { loading.value = false; return }
+
+  const { data: transactions } = await client
+    .from('transactions')
+    .select('user_id, quantity, total_amount')
+    .eq('status', 'completed')
+    .returns<Transaction[]>()
+
+  const totalsMap: Record<string, { sales: number; gallons: number }> = {}
+
+  if (transactions) {
+    for (const t of transactions) {
+      if (!totalsMap[t.user_id]) totalsMap[t.user_id] = { sales: 0, gallons: 0 }
+      totalsMap[t.user_id]!.sales += Number(t.total_amount)
+      totalsMap[t.user_id]!.gallons += Number(t.quantity)
+    }
+  }
+
+  users.value = profiles.map(p => ({
+    ...p,
+    total_sales: totalsMap[p.id]?.sales ?? 0,
+    total_gallons: totalsMap[p.id]?.gallons ?? 0,
+  }))
+
   loading.value = false
 }
 
 const createUser = async () => {
-  if (!newEmail.value || !newPassword.value || !newStationName.value) {
+  if (!newEmail.value || !newPassword.value || !newStationName.value || !newLocation.value) {
     createError.value = 'Please fill in all required fields.'
     return
   }
@@ -77,7 +101,7 @@ const createUser = async () => {
   createError.value = ''
   createSuccess.value = ''
 
-  const { error } = await client.auth.signUp({
+  const { data: signUpData, error } = await client.auth.signUp({
     email: newEmail.value,
     password: newPassword.value,
     options: {
@@ -94,6 +118,12 @@ const createUser = async () => {
     return
   }
 
+  if (signUpData.user?.id) {
+    await (client.from('profiles') as any)
+      .update({ location: newLocation.value })
+      .eq('id', signUpData.user.id)
+  }
+
   createSuccess.value = `Account for ${newStationName.value} created successfully!`
   creating.value = false
 
@@ -103,17 +133,14 @@ const createUser = async () => {
   }, 1500)
 }
 
-// Opens the delete confirmation modal
 const confirmDelete = (id: string, name: string) => {
   deletingId.value = id
   deletingName.value = name
   showDeleteModal.value = true
 }
 
-// Performs the actual deletion of the user
 const deleteUser = async () => {
   if (!deletingId.value) return
-
   deleting.value = true
 
   const { error } = await client.rpc('delete_user_by_id', { user_id: deletingId.value } as any)
@@ -139,18 +166,15 @@ const cancelDelete = () => {
 
 onMounted(() => fetchUsers())
 </script>
-
 <template>
   <div class="relative w-full overflow-hidden p-3">
     <div class="relative z-10">
 
-      <!-- Header -->
       <div class="flex items-center justify-between max-w-full">
         <div>
           <h2 class="text-xl text-gray-700 font-bold">Water Stations</h2>
           <p class="text-sm text-slate-500 mt-1">{{ users.length }} station(s) registered</p>
         </div>
-
         <button
           @click="openModal"
           class="px-10 py-3 cursor-pointer rounded-sm bg-green-600 text-white hover:bg-green-700 hover:scale-105 transition-all duration-300 font-bold text-sm flex items-center gap-3"
@@ -162,17 +186,14 @@ onMounted(() => fetchUsers())
 
       <div class="mt-5 bg-green-200 w-full h-0.5" />
 
-      <!-- Loading -->
       <div v-if="loading" class="mt-10 text-center text-slate-400 text-sm">
         Loading stations...
       </div>
 
-      <!-- Empty -->
       <div v-else-if="users.length === 0" class="mt-10 text-center text-slate-400 text-sm">
         No stations registered yet.
       </div>
 
-      <!-- Cards -->
       <div v-else class="mt-5 grid grid-cols-3 gap-5">
         <div
           v-for="user in users"
@@ -190,11 +211,13 @@ onMounted(() => fetchUsers())
                 <h2 class="text-sm font-bold text-slate-800">
                   {{ user.station_name || 'Unnamed Station' }}
                 </h2>
-                <p class="text-xs text-slate-500">{{ user.email }}</p>
+                <p class="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
+                  <MapPin :size="10" />
+                  {{ user.location || 'No location' }}
+                </p>
               </div>
             </div>
 
-            <!-- Trash button now opens modal -->
             <button
               @click="confirmDelete(user.id, user.station_name || 'this station')"
               class="w-10 h-10 cursor-pointer rounded-xl hover:bg-red-100 text-slate-400 hover:text-red-500 flex items-center justify-center transition"
@@ -227,10 +250,16 @@ onMounted(() => fetchUsers())
                 }) }}
               </span>
             </div>
+
+            <!-- Real totals -->
             <div class="mt-4 rounded-2xl bg-slate-50 p-4 border border-slate-100">
               <p class="text-xs text-slate-500 mb-1">Total Sales</p>
-              <h1 class="text-l font-bold text-green-700">₱0.00</h1>
-              <p class="text-xs text-green-400 mt-1">0 Gallons Sold</p>
+              <h1 class="text-lg font-bold text-green-700">
+                ₱{{ user.total_sales.toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}
+              </h1>
+              <p class="text-xs text-green-400 mt-1">
+                {{ user.total_gallons }} Gallons Sold
+              </p>
             </div>
           </div>
 
@@ -246,54 +275,39 @@ onMounted(() => fetchUsers())
       </div>
     </div>
 
-    <!-- ─── Delete Confirm Modal ───────────────────────────────── -->
+    <!-- Delete Modal -->
     <Transition name="fade">
-      <div
-        v-if="showDeleteModal"
-        class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6"
-      >
+      <div v-if="showDeleteModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
         <Transition name="scale">
           <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center">
-
             <div class="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
               <AlertTriangle class="text-red-500" :size="28" />
             </div>
-
             <h2 class="text-xl font-black text-gray-800 mb-2">Delete Station</h2>
             <p class="text-sm text-slate-500 mb-6">
               Are you sure you want to delete
               <span class="font-bold text-gray-700">{{ deletingName }}</span>?
               This action cannot be undone.
             </p>
-
             <div class="flex gap-3">
-              <button
-                @click="deleteUser"
-                :disabled="deleting"
-                class="flex-1 py-3 rounded-2xl bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-bold text-sm transition cursor-pointer"
-              >
+              <button @click="deleteUser" :disabled="deleting"
+                class="flex-1 py-3 rounded-2xl bg-red-600 hover:bg-red-700 disabled:opacity-60 text-white font-bold text-sm transition cursor-pointer">
                 {{ deleting ? 'Deleting...' : 'Yes, Delete' }}
               </button>
-              <button
-                @click="cancelDelete"
-                class="flex-1 py-3 rounded-2xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-semibold text-sm transition cursor-pointer"
-              >
+              <button @click="cancelDelete"
+                class="flex-1 py-3 rounded-2xl border border-gray-200 hover:bg-gray-50 text-gray-700 font-semibold text-sm transition cursor-pointer">
                 Cancel
               </button>
             </div>
-
           </div>
         </Transition>
         <div class="absolute inset-0 -z-10" @click="cancelDelete" />
       </div>
     </Transition>
 
-    <!-- ─── Create User Modal ─────────────────────────────────── -->
+    <!-- Create User Modal -->
     <Transition name="fade">
-      <div
-        v-if="showCreateModal"
-        class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6"
-      >
+      <div v-if="showCreateModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
         <Transition name="scale">
           <div class="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden">
 
@@ -302,20 +316,16 @@ onMounted(() => fetchUsers())
                 <h2 class="text-xl font-black">Create New User</h2>
                 <p class="text-green-100 text-sm mt-1">Register a new water station account</p>
               </div>
-              <button
-                @click="closeModal"
-                class="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center cursor-pointer transition"
-              >
+              <button @click="closeModal"
+                class="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center cursor-pointer transition">
                 <X :size="18" />
               </button>
             </div>
 
             <div class="p-8">
-
               <div v-if="createError" class="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm">
                 {{ createError }}
               </div>
-
               <div v-if="createSuccess" class="mb-4 px-4 py-3 bg-green-50 border border-green-200 rounded-2xl text-green-600 text-sm">
                 {{ createSuccess }}
               </div>
@@ -337,9 +347,9 @@ onMounted(() => fetchUsers())
 
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-2">
-                    Station location<span class="text-red-400">*</span>
+                    Station Location <span class="text-red-400">*</span>
                   </label>
-                  <input v-model="newLocation" type="text" required placeholder="e.g. 123 Main St, City"
+                  <input v-model="newLocation" type="text" required placeholder="e.g. Taytay, Rizal"
                     class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm">
                 </div>
 
@@ -377,7 +387,6 @@ onMounted(() => fetchUsers())
                   Cancel
                 </button>
               </div>
-
             </div>
           </div>
         </Transition>
