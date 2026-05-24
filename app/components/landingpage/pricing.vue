@@ -34,7 +34,7 @@
         >
           <div class="p-6 text-center">
             <div class="text-2xl font-bold text-primary-600">
-              Starter
+              Basic
             </div>
 
             <div class="mt-4">
@@ -53,7 +53,7 @@
 
             <div class="mt-6">
               <span class="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-full">
-                 ₱8,999 Setup System Only
+                 ₱7,999 Setup System Only
               </span>
             </div>
           </div>
@@ -78,12 +78,12 @@
 
           <div class="p-6 text-center">
             <div class="text-2xl font-bold text-primary-600">
-              Business
+              Standard
             </div>
 
             <div class="mt-4">
               <span class="text-5xl font-extrabold text-gray-900">
-                ₱2,299
+                ₱799
               </span>
 
               <span class="text-gray-500">
@@ -99,7 +99,7 @@
               <span
                 class="text-xs bg-primary-100 text-primary-700 px-3 py-1.5 rounded-full font-semibold"
               >
-                ₱8,999 Setup System Only
+                ₱7,999 Setup System Only
               </span>
             </div>
           </div>
