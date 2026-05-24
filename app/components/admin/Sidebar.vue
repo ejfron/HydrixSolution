@@ -60,7 +60,8 @@ const systemMenu = [
 
           <Transition name="fade">
             <div v-if="OpenSidebar" class="truncate">
-              <h1 class="font-semibold text-sm">Hydrix</h1>
+              <<!-- app/components/landingpage/navi.vue -->
+<img src="/logo.svg" alt="Hydrix" class="h-10" />
               <p class="text-xs text-gray-100 truncate">Water Station System</p>
             </div>
           </Transition>

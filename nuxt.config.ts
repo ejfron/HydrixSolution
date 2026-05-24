@@ -1,6 +1,6 @@
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
-  devtools: { enabled: false }, // disable in production
+  devtools: { enabled: false },
 
   modules: [
     '@nuxt/ui',
@@ -15,7 +15,6 @@ export default defineNuxtConfig({
 
   css: ['~/assets/css/main.css'],
 
-  // Security headers
   routeRules: {
     '/**': {
       headers: {
@@ -29,6 +28,11 @@ export default defineNuxtConfig({
   app: {
     head: {
       link: [
+        {
+          rel: 'icon',
+          type: 'image/svg+xml',
+          href: '/logo.svg'
+        },
         {
           rel: 'stylesheet',
           href: 'https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,400;0,700&display=swap'

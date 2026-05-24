@@ -4,14 +4,8 @@
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="flex justify-between h-16">
           <div class="flex items-center">
-            <div class="flex-shrink-0 flex items-center space-x-2">
-              <div class="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-                <span class="text-white text-lg">
-                  <Droplets :size="20" />
-                </span>
-              </div>
-              <span class="text-xl font-bold bg-gradient-to-r from-primary-600 to-primary-400 bg-clip-text text-transparent">Hydrix</span>
-            </div>
+                            
+<img src="/logo.svg" alt="Hydrix" class="h-13" />
             <div class="hidden md:ml-8 md:flex md:space-x-6">
               <a href="#home" class="text-gray-700 hover:text-primary-600 px-3 py-2 text-xs font-semibold transition-colors">Home</a>
               <a href="#features" class="text-gray-700 hover:text-primary-600 px-3 py-2 text-xs font-semibold transition-colors">Features</a>

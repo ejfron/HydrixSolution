@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 340 110">
+  <!-- Hex background -->
+  <polygon points="60,8 100,8 122,45 100,82 60,82 38,45" fill="#0ea44b"/>
+  <polygon points="60,18 100,18 118,45 100,72 60,72 42,45" fill="none" stroke="#ffffff" stroke-width="1.5" opacity="0.3"/>
+
+  <!-- Droplet -->
+  <path d="M80 25 C80 25 60 48 60 58 C60 69 69 77 80 77 C91 77 100 69 100 58 C100 48 80 25 80 25Z" fill="#ffffff" opacity="0.95"/>
+  <ellipse cx="73" cy="57" rx="4" ry="6" fill="#0ea44b" opacity="0.4"/>
+
+  <!-- Wordmark -->
+  <text x="135" y="58" font-family="system-ui, sans-serif" font-weight="700" font-size="38" fill="#0ea44b" letter-spacing="-1">HYDRIX</text>
+
+  <!-- Tagline -->
+  <text x="137" y="76" font-family="system-ui, sans-serif" font-weight="400" font-size="10" fill="#64748b" letter-spacing="2.5">WATER STATION SYSTEM</text>
+</svg>

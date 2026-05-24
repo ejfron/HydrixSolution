@@ -115,13 +115,9 @@ const handleLogin = async () => {
       <div class="w-full max-w-md">
 
         <div class="lg:hidden text-center mb-8">
-          <h1 class="text-4xl font-black text-[#0ea44b]">
-            <span>
-              <Droplets :size="50" class="inline text-green-600" />
-            </span>
-            <span>
-              Hydrix
-            </span>
+          <h1 class="text-4xl font-black flex items-center justify-center text-[#0ea44b]">
+                              <!-- app/components/landingpage/navi.vue -->
+<img src="/logo.svg" alt="Hydrix" class="w-full" />
             </h1>
         </div>
 

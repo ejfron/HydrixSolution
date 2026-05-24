@@ -9,13 +9,9 @@ import { Image, MailCheck, MessageCircle, Droplets, Phone, MapPinCheck } from '@
       <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div class="grid grid-cols-1 md:grid-cols-4 gap-8">
           <div>
-            <div class="flex items-center gap-2 mb-4">
-              <div class="w-8 h-8 bg-primary-600 rounded-lg flex items-center justify-center">
-                <span class="text-white text-sm">
-                  <Droplets />
-                </span>
-              </div>
-              <h3 class="text-white text-lg font-semibold">Hydrix</h3>
+            <div class="flex items-center gap-2 -ml-7 mb-1">
+                                
+<img src="/logo.svg" alt="Hydrix" class="h-15" />
             </div>
             <p class="text-sm text-gray-400">Pure water, on demand. Smart dispensing for modern living.</p>
             <div class="flex gap-4 mt-4">
