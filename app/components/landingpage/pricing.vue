@@ -48,12 +48,12 @@
             </div>
 
             <p class="mt-4 text-gray-600 text-sm">
-              Ideal for small sari-sari stores and beginner entrepreneurs.
+              Ideal for small households and beginner entrepreneurs.
             </p>
 
             <div class="mt-6">
               <span class="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-full">
-                 ₱7,999 Setup System Only
+                 ₱4,999 Setup System Only
               </span>
             </div>
           </div>
@@ -99,7 +99,7 @@
               <span
                 class="text-xs bg-primary-100 text-primary-700 px-3 py-1.5 rounded-full font-semibold"
               >
-                ₱7,999 Setup System Only
+                ₱6,999 Setup System Only
               </span>
             </div>
           </div>

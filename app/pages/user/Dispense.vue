@@ -6,6 +6,7 @@ import { Droplets, Plus, Minus, ShoppingCart, CheckCircle } from '@lucide/vue'
 import Navbar from '~/components/user/Navbar.vue'
 import Sidebar from '~/components/user/Sidebar.vue'
 
+
 const client = useSupabaseClient()
 const user = useSupabaseUser()
 
