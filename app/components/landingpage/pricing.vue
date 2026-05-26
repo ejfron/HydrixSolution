@@ -43,7 +43,7 @@
               </span>
 
               <span class="text-gray-500">
-                /setup
+                /Monthly
               </span>
             </div>
 
@@ -116,11 +116,11 @@
 
             <div class="mt-4">
               <span class="text-5xl font-extrabold text-gray-900">
-                ₱79,999
+                ₱2,999
               </span>
 
               <span class="text-gray-500">
-                /complete
+                /Monthly
               </span>
             </div>
 

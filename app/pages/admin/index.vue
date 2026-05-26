@@ -13,19 +13,14 @@ const OpenSidebar = ref(true)
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#f5f7fb] flex ">
+  <div class="min-h-screen bg-slate-50 flex">
     <Sidebar />
-
-    <main class="flex-1 min-w-0 transition-all duration-300">
+    <main class="flex-1 min-w-0 flex flex-col">
       <Navbar />
-
-      <div class="p-8 space-y-8">
+      <div class="p-6 space-y-6 flex-1">
         <Statscard />
-
         <SalesOverview />
         <UsersData />
-
-
       </div>
     </main>
   </div>

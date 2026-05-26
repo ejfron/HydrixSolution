@@ -79,16 +79,18 @@ onMounted(() => fetchReports())
     <main class="flex-1 min-w-0">
       <Navbar />
 
-      <div class="p-8 space-y-8">
+      <!-- Responsive container: smaller padding on mobile, larger on desktop -->
+      <div class="p-4 sm:p-8 space-y-6 sm:space-y-8">
 
-        <div class="flex items-center justify-between">
+        <!-- Header: column on mobile, row on larger screens -->
+        <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 sm:gap-0">
           <div>
-            <h2 class="text-2xl font-bold text-gray-700">Reports</h2>
-            <p class="text-slate-500 text-sm mt-1">Sales and dispensing reports</p>
+            <h2 class="text-xl sm:text-2xl font-bold text-gray-700">Reports</h2>
+            <p class="text-slate-500 text-xs sm:text-sm mt-1">Sales and dispensing reports</p>
           </div>
 
-          <!-- Period Toggle -->
-          <div class="flex gap-2 bg-white border border-slate-200 rounded-2xl p-1">
+          <!-- Period Toggle: wrap on mobile, adjust padding -->
+          <div class="flex flex-wrap gap-2 bg-white border border-slate-200 rounded-2xl p-1">
             <button
               v-for="p in ['daily', 'monthly', 'yearly']"
               :key="p"
@@ -97,7 +99,7 @@ onMounted(() => fetchReports())
                 selectedPeriod === p
                   ? 'bg-green-600 text-white'
                   : 'text-slate-500 hover:bg-slate-50',
-                'px-4 py-2 rounded-xl text-sm font-semibold transition cursor-pointer capitalize'
+                'px-3 sm:px-4 py-1.5 sm:py-2 rounded-xl text-xs sm:text-sm font-semibold transition cursor-pointer capitalize'
               ]"
             >
               {{ p }}
@@ -105,58 +107,61 @@ onMounted(() => fetchReports())
           </div>
         </div>
 
-        <!-- Summary Cards -->
-        <div class="grid grid-cols-2 gap-6">
-          <div class="bg-white rounded-3xl border border-slate-200 p-6 flex items-center justify-between">
+        <!-- Summary Cards: stack on mobile (1 col), 2 cols on larger screens -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 sm:gap-6">
+          <div class="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 flex items-center justify-between">
             <div>
-              <p class="text-slate-500 text-sm mb-2">Total Sales</p>
-              <h2 class="text-2xl font-black text-green-600">₱{{ grandTotal.toFixed(2) }}</h2>
+              <p class="text-slate-500 text-xs sm:text-sm mb-2">Total Sales</p>
+              <h2 class="text-xl sm:text-2xl font-black text-green-600">₱{{ grandTotal.toFixed(2) }}</h2>
             </div>
-            <TrendingUp :size="36" class="text-green-600" />
+            <TrendingUp :size="32" class="text-green-600" />
           </div>
 
-          <div class="bg-white rounded-3xl border border-slate-200 p-6 flex items-center justify-between">
+          <div class="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 flex items-center justify-between">
             <div>
-              <p class="text-slate-500 text-sm mb-2">Total Gallons</p>
-              <h2 class="text-2xl font-black text-green-600">{{ grandGallons }} pcs</h2>
+              <p class="text-slate-500 text-xs sm:text-sm mb-2">Total Gallons</p>
+              <h2 class="text-xl sm:text-2xl font-black text-green-600">{{ grandGallons }} pcs</h2>
             </div>
-            <Droplets :size="36" class="text-green-600" />
+            <Droplets :size="32" class="text-green-600" />
           </div>
         </div>
 
-        <!-- Report Table -->
+        <!-- Report Table: horizontal scroll on mobile, reduced cell padding -->
         <div class="bg-white rounded-3xl border border-slate-200 overflow-hidden">
-          <div class="px-8 py-5 border-b border-slate-100 flex items-center gap-2">
-            <FileText :size="18" class="text-green-600" />
-            <h3 class="font-bold text-gray-700">
+          <div class="px-4 sm:px-8 py-3 sm:py-5 border-b border-slate-100 flex items-center gap-2">
+            <FileText :size="16" class="text-green-600" />
+            <h3 class="font-bold text-gray-700 text-sm sm:text-base">
               {{ selectedPeriod === 'daily' ? 'Daily' : selectedPeriod === 'monthly' ? 'Monthly' : 'Yearly' }} Breakdown
             </h3>
           </div>
 
-          <div v-if="currentData.length === 0" class="p-10 text-center text-green-600 text-sm">
+          <div v-if="currentData.length === 0" class="p-6 sm:p-10 text-center text-green-600 text-xs sm:text-sm">
             No data available for this period.
           </div>
 
-          <table v-else class="w-full">
-            <thead class="bg-slate-50">
-              <tr class="text-gray-600 text-xs">
-                <th class="text-left px-8 py-5">Period</th>
-                <th class="text-left px-8 py-5">Gallons Sold</th>
-                <th class="text-left px-8 py-5">Total Sales</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr
-                v-for="row in currentData"
-                :key="row.label"
-                class="border-b border-slate-100 text-gray-700 text-xs hover:bg-slate-50 transition"
-              >
-                <td class="px-8 py-5 font-medium">{{ row.label }}</td>
-                <td class="px-8 py-5">{{ row.gallons }} pcs</td>
-                <td class="px-8 py-5 font-bold text-green-600">₱{{ row.total.toFixed(2) }}</td>
-              </tr>
-            </tbody>
-          </table>
+          <!-- Table wrapper for horizontal scroll on mobile -->
+          <div v-else class="overflow-x-auto">
+            <table class="w-full min-w-[500px]">
+              <thead class="bg-slate-50">
+                <tr class="text-gray-600 text-xs">
+                  <th class="text-left px-4 sm:px-8 py-4 sm:py-5">Period</th>
+                  <th class="text-left px-4 sm:px-8 py-4 sm:py-5">Gallons Sold</th>
+                  <th class="text-left px-4 sm:px-8 py-4 sm:py-5">Total Sales</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr
+                  v-for="row in currentData"
+                  :key="row.label"
+                  class="border-b border-slate-100 text-gray-700 text-xs hover:bg-slate-50 transition"
+                >
+                  <td class="px-4 sm:px-8 py-4 sm:py-5 font-medium whitespace-nowrap">{{ row.label }}</td>
+                  <td class="px-4 sm:px-8 py-4 sm:py-5">{{ row.gallons }} pcs</td>
+                  <td class="px-4 sm:px-8 py-4 sm:py-5 font-bold text-green-600 whitespace-nowrap">₱{{ row.total.toFixed(2) }}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
       </div>

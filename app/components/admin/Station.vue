@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Plus, Settings, Droplets, Trash2, X, AlertTriangle, MapPin } from '@lucide/vue'
+import { Plus, Settings, Droplets, Trash2, X, AlertTriangle, MapPin, RefreshCw } from '@lucide/vue'
 import { useSupabaseClient } from '#imports'
 
 const client = useSupabaseClient()
@@ -12,6 +12,8 @@ type Profile = {
   role: string
   location: string
   created_at: string
+  subscription_status: string
+  next_payment_date: string | null
 }
 
 type Transaction = {
@@ -59,7 +61,7 @@ const fetchUsers = async () => {
 
   const { data: profiles } = await client
     .from('profiles')
-    .select('id, full_name, station_name, email, role, location, created_at')
+    .select('id, full_name, station_name, email, role, location, created_at, subscription_status, next_payment_date')
     .eq('role', 'user')
     .order('created_at', { ascending: false })
     .returns<Profile[]>()
@@ -119,8 +121,17 @@ const createUser = async () => {
   }
 
   if (signUpData.user?.id) {
+    const today = new Date()
+    const nextPayment = new Date()
+    nextPayment.setMonth(nextPayment.getMonth() + 1)
+
     await (client.from('profiles') as any)
-      .update({ location: newLocation.value })
+      .update({
+        location: newLocation.value,
+        subscription_start: today.toISOString().split('T')[0],
+        next_payment_date: nextPayment.toISOString().split('T')[0],
+        subscription_status: 'active',
+      })
       .eq('id', signUpData.user.id)
   }
 
@@ -131,6 +142,20 @@ const createUser = async () => {
     await fetchUsers()
     closeModal()
   }, 1500)
+}
+
+const renewSubscription = async (userId: string) => {
+  const nextPayment = new Date()
+  nextPayment.setMonth(nextPayment.getMonth() + 1)
+
+  await (client.from('profiles') as any)
+    .update({
+      next_payment_date: nextPayment.toISOString().split('T')[0],
+      subscription_status: 'active',
+    })
+    .eq('id', userId)
+
+  await fetchUsers()
 }
 
 const confirmDelete = (id: string, name: string) => {
@@ -166,10 +191,12 @@ const cancelDelete = () => {
 
 onMounted(() => fetchUsers())
 </script>
+
 <template>
   <div class="relative w-full overflow-hidden p-3">
     <div class="relative z-10">
 
+      <!-- Header -->
       <div class="flex items-center justify-between max-w-full">
         <div>
           <h2 class="text-xl text-gray-700 font-bold">Water Stations</h2>
@@ -186,14 +213,17 @@ onMounted(() => fetchUsers())
 
       <div class="mt-5 bg-green-200 w-full h-0.5" />
 
+      <!-- Loading -->
       <div v-if="loading" class="mt-10 text-center text-slate-400 text-sm">
         Loading stations...
       </div>
 
+      <!-- Empty -->
       <div v-else-if="users.length === 0" class="mt-10 text-center text-slate-400 text-sm">
         No stations registered yet.
       </div>
 
+      <!-- Cards -->
       <div v-else class="mt-5 grid grid-cols-3 gap-5">
         <div
           v-for="user in users"
@@ -202,6 +232,7 @@ onMounted(() => fetchUsers())
         >
           <div class="absolute top-0 left-0 w-full h-0.5 bg-green-600" />
 
+          <!-- Card Header -->
           <div class="flex items-start justify-between mb-5">
             <div class="flex items-center gap-4">
               <div class="w-14 h-14 rounded-2xl bg-green-100 flex items-center justify-center">
@@ -226,6 +257,7 @@ onMounted(() => fetchUsers())
             </button>
           </div>
 
+          <!-- Card Body -->
           <div class="space-y-4">
             <div class="flex items-center justify-between">
               <span class="text-xs text-slate-500">Owner</span>
@@ -251,8 +283,31 @@ onMounted(() => fetchUsers())
               </span>
             </div>
 
-            <!-- Real totals -->
-            <div class="mt-4 rounded-2xl bg-slate-50 p-4 border border-slate-100">
+            <!-- Subscription Status -->
+            <div
+              :class="[
+                'rounded-xl px-3 py-2 text-xs font-semibold flex items-center justify-between',
+                user.subscription_status === 'active'
+                  ? 'bg-green-50 text-green-700 border border-green-100'
+                  : 'bg-red-50 text-red-600 border border-red-100'
+              ]"
+            >
+              <span>{{ user.subscription_status === 'active' ? 'Active' : 'Expired' }}</span>
+              <span>Due: {{ user.next_payment_date || '—' }}</span>
+            </div>
+
+            <!-- Renew button if expired -->
+            <button
+              v-if="user.subscription_status === 'expired'"
+              @click="renewSubscription(user.id)"
+              class="w-full py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition cursor-pointer flex items-center justify-center gap-2"
+            >
+              <RefreshCw :size="13" />
+              Renew Subscription
+            </button>
+
+            <!-- Total Sales -->
+            <div class="mt-2 rounded-2xl bg-slate-50 p-4 border border-slate-100">
               <p class="text-xs text-slate-500 mb-1">Total Sales</p>
               <h1 class="text-lg font-bold text-green-700">
                 ₱{{ user.total_sales.toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}
@@ -263,6 +318,7 @@ onMounted(() => fetchUsers())
             </div>
           </div>
 
+          <!-- Card Footer -->
           <div class="mt-6 flex items-center gap-3">
             <button class="flex-1 py-3 text-xs cursor-pointer rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition">
               View Station

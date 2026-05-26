@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Search, Users, ChevronDown, LogOut } from '@lucide/vue'
+import { Search, Users, ChevronDown, LogOut, Bell } from '@lucide/vue'
 
 const client = useSupabaseClient()
 const router = useRouter()
@@ -7,6 +7,7 @@ const user = useSupabaseUser()
 const { profile, fetchProfile } = useProfile()
 
 const showDropdown = ref(false)
+const searchQuery = ref('')
 
 onMounted(async () => {
   await fetchProfile()
@@ -16,84 +17,100 @@ const handleLogout = async () => {
   await client.auth.signOut()
   router.push('/loginpage')
 }
+
+const today = new Date().toLocaleDateString('en-PH', {
+  weekday: 'long', year: 'numeric', month: 'long', day: 'numeric'
+})
 </script>
 
 <template>
-  <header class="h-[95px] bg-white border-b border-slate-200 px-10 flex items-center justify-between">
+  <header class="h-[70px] bg-white border-b border-slate-100 px-8 flex items-center justify-between shrink-0">
+
+    <!-- Left: Dashboard name stays visible on all screen sizes -->
     <div>
-      <h1 class="text-xl font-bold text-slate-900">Admin Dashboard</h1>
-      <p class="text-slate-500 mt-1 text-xs">Overview of your water station system</p>
+      <h1 class="text-base font-bold text-slate-800">Admin Dashboard</h1>
+      <p class="text-xs text-slate-400 mt-0.5">{{ today }}</p>
     </div>
 
-    <div class="flex items-center gap-6">
-      <div class="w-[320px] h-[40px] rounded-2xl border border-slate-200 bg-[#f8fafc] px-5 flex items-center gap-3">
-        <Search class="w-5 h-5 text-gray-700" />
+    <!-- Right: Responsive controls -->
+    <div class="flex items-center gap-3">
+
+      <!-- Search: hidden on mobile, visible from md breakpoint upwards -->
+      <div class="hidden md:flex w-[240px] h-9 rounded-xl border border-slate-200 bg-slate-50 px-3 items-center gap-2">
+        <Search class="w-4 h-4 text-slate-400 shrink-0" />
         <input
+          v-model="searchQuery"
           type="text"
-          placeholder="Search anything..."
-          class="bg-transparent text-gray-700 outline-none flex-1 text-sm"
+          placeholder="Search..."
+          class="bg-transparent text-slate-600 outline-none flex-1 text-sm placeholder:text-slate-400"
         />
       </div>
 
-      <!-- Profile + Dropdown -->
+      <!-- Bell icon (always visible) -->
+      <button class="w-9 h-9 rounded-xl border border-slate-200 flex items-center justify-center hover:bg-slate-50 transition cursor-pointer relative">
+        <Bell class="w-4 h-4 text-slate-500" />
+        <span class="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-green-500" />
+      </button>
+
+      <!-- Divider: hidden on mobile, visible from md -->
+      <div class="hidden md:block w-px h-6 bg-slate-200" />
+
+      <!-- Profile dropdown -->
       <div class="relative">
-        <div
-          class="flex items-center gap-4 cursor-pointer"
+        <button
           @click="showDropdown = !showDropdown"
+          class="flex items-center gap-2.5 cursor-pointer hover:bg-slate-50 rounded-xl px-2 py-1.5 transition"
         >
-          <div class="w-10 h-10 rounded-full bg-green-600 flex items-center justify-center text-white">
-            <Users :size="20" />
+          <!-- Person icon (always visible) -->
+          <div class="w-8 h-8 rounded-lg bg-green-600 flex items-center justify-center text-white shrink-0">
+            <Users :size="16" />
           </div>
-
-          <div>
-            <h3 class="font-bold text-green-600">{{ profile?.station_name || 'Admin' }}</h3>
-            <p class="text-sm text-gray-500">{{ user?.email }}</p>
+          
+          <!-- Station name & email: hidden on mobile, visible from md -->
+          <div class="hidden md:block text-left">
+            <p class="text-sm font-semibold text-slate-700 leading-tight">
+              {{ profile?.station_name || 'Admin' }}
+            </p>
+            <p class="text-[11px] text-slate-400 truncate max-w-[120px]">{{ user?.email }}</p>
           </div>
-
+          
+          <!-- Chevron: hidden on mobile, visible from md -->
           <ChevronDown
-            class="w-5 h-5 text-slate-500 transition-transform duration-200"
+            class="hidden md:block w-4 h-4 text-slate-400 transition-transform duration-200"
             :class="showDropdown ? 'rotate-180' : ''"
           />
-        </div>
+        </button>
 
-        <!-- Dropdown -->
+        <!-- Dropdown menu (unchanged) -->
         <Transition
           enter-active-class="transition ease-out duration-150"
-          enter-from-class="opacity-0 translate-y-1"
-          enter-to-class="opacity-100 translate-y-0"
+          enter-from-class="opacity-0 scale-95 translate-y-1"
+          enter-to-class="opacity-100 scale-100 translate-y-0"
           leave-active-class="transition ease-in duration-100"
-          leave-from-class="opacity-100 translate-y-0"
-          leave-to-class="opacity-0 translate-y-1"
+          leave-from-class="opacity-100"
+          leave-to-class="opacity-0"
         >
           <div
             v-if="showDropdown"
-            class="absolute right-0 top-14 w-56 bg-white rounded-2xl shadow-xl border border-slate-100 py-2 z-50"
+            class="absolute right-0 top-12 w-52 bg-white rounded-2xl shadow-lg border border-slate-100 py-1.5 z-50 overflow-hidden"
           >
-            <!-- User info -->
             <div class="px-4 py-3 border-b border-slate-100">
-              <p class="text-sm font-semibold text-slate-800">
-                {{ profile?.station_name || 'Admin' }}
-              </p>
-              <p class="text-xs text-slate-500 truncate">{{ user?.email }}</p>
+              <p class="text-sm font-semibold text-slate-800">{{ profile?.station_name || 'Admin' }}</p>
+              <p class="text-xs text-slate-400 truncate mt-0.5">{{ user?.email }}</p>
             </div>
-
-            <!-- Logout -->
-            <button
-              @click="handleLogout"
-              class="w-full flex items-center gap-3 px-4 py-3 text-sm text-red-500 hover:bg-red-50 transition cursor-pointer"
-            >
-              <LogOut class="w-4 h-4" />
-              Logout
-            </button>
+            <div class="p-1.5">
+              <button
+                @click="handleLogout"
+                class="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm text-red-500 hover:bg-red-50 transition cursor-pointer"
+              >
+                <LogOut class="w-4 h-4" />
+                Sign out
+              </button>
+            </div>
           </div>
         </Transition>
 
-        <!-- Click outside to close -->
-        <div
-          v-if="showDropdown"
-          class="fixed inset-0 z-40"
-          @click="showDropdown = false"
-        />
+        <div v-if="showDropdown" class="fixed inset-0 z-40" @click="showDropdown = false" />
       </div>
     </div>
   </header>
