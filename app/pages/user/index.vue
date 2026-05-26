@@ -86,7 +86,7 @@ onMounted(async () => {
             </p>
           </div>
           
-          <a href="https://m.me/YOUR_FACEBOOK_PAGE"
+          <a href="https://www.facebook.com/ej.fron16"
             target="_blank"
             class="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl text-xs font-bold transition cursor-pointer w-full sm:w-auto text-center"
           >
@@ -99,13 +99,13 @@ onMounted(async () => {
           class="bg-red-50 border border-red-200 rounded-2xl px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
         >
           <div>
-            <p class="font-bold text-red-600 text-sm">❌ Subscription Expired</p>
+            <p class="font-bold text-red-600 text-sm">Subscription Expired</p>
             <p class="text-xs text-red-500 mt-1">
               Your subscription expired on {{ nextPaymentDate }}. Contact admin to renew.
             </p>
           </div>
           
-          <a href="https://m.me/YOUR_FACEBOOK_PAGE"
+          <a href="https://www.facebook.com/ej.fron16"
             target="_blank"
             class="px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition cursor-pointer w-full sm:w-auto text-center"
           >
