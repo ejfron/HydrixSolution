@@ -190,7 +190,7 @@ onMounted(async () => {
 
           <!-- Table wrapper for horizontal scroll on mobile -->
           <div v-else class="overflow-x-auto">
-            <table class="w-full min-w-[600px]">
+            <table class="w-full min-w-150">
               <thead class="bg-slate-50">
                 <tr class="text-gray-600 text-xs">
                   <th class="text-left px-4 sm:px-6 lg:px-8 py-4 sm:py-5">Date & Time</th>
