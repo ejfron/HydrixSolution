@@ -158,6 +158,19 @@ const createGallonType = async () => {
     return
   }
 
+  // ─── Duplicate check ──────────────────────────────────────
+  const duplicate = gallonTypes.value.some(
+    g =>
+      g.name.toLowerCase() === newName.value.toLowerCase() &&
+      g.size === newSize.value &&
+      g.unit === newUnit.value
+  )
+
+  if (duplicate) {
+    createError.value = 'A gallon with this name, size and unit already exists.'
+    return
+  }
+
   const { data: { session } } = await client.auth.getSession()
   const userId = user.value?.id ?? session?.user?.id
   if (!userId) return
@@ -705,7 +718,7 @@ onMounted(async () => {
             </button>
 
             <!-- Image -->
-            <div class="h-32 bg-gradient-to-br from-green-50 to-slate-50 flex items-center justify-center overflow-hidden">
+            <div class="h-32 bg-linear-to-br from-green-50 to-slate-50 flex items-center justify-center overflow-hidden">
               <img v-if="g.image_url" :src="g.image_url" :alt="g.name" class="h-full w-full object-cover" />
               <div v-else class="flex flex-col items-center gap-2 text-slate-300">
                 <Droplets :size="36" />
