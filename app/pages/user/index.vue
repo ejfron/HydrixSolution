@@ -12,6 +12,7 @@ type Transaction = {
   quantity: number
   total_amount: number
   status: string
+  transaction_type: string
   created_at: string
 }
 
@@ -51,6 +52,17 @@ const fetchDashboard = async () => {
   }
 
   stats.value = { today, thisMonth: month, totalSales: total, totalTransactions: data.length }
+}
+
+// ─── Helper for transaction type badge ────────────
+const typeLabel = (type: string) => {
+  if (type === 'reseller') return 'Retailer/Reseller'
+  return 'Regular'
+}
+
+const typeBadgeColor = (type: string) => {
+  if (type === 'reseller') return 'bg-violet-100 text-violet-700'
+  return 'bg-green-100 text-green-700'
 }
 
 const formatDate = (d: string) =>
@@ -182,6 +194,7 @@ onMounted(async () => {
               <thead class="bg-slate-50">
                 <tr class="text-gray-600 text-xs">
                   <th class="text-left px-4 sm:px-6 lg:px-8 py-4 sm:py-5">Date & Time</th>
+                  <th class="text-left px-4 sm:px-6 lg:px-8 py-4 sm:py-5">Type</th>
                   <th class="text-left px-4 sm:px-6 lg:px-8 py-4 sm:py-5">Gallon Type</th>
                   <th class="text-left px-4 sm:px-6 lg:px-8 py-4 sm:py-5">Qty</th>
                   <th class="text-left px-4 sm:px-6 lg:px-8 py-4 sm:py-5">Total</th>
@@ -195,6 +208,11 @@ onMounted(async () => {
                   class="border-b border-slate-100 text-gray-700 text-xs"
                 >
                   <td class="px-4 sm:px-6 lg:px-8 py-4 sm:py-5 whitespace-nowrap">{{ formatDate(t.created_at) }}</td>
+                   <td class="px-8 py-5">
+                  <span :class="['px-2 py-1 rounded-full text-xs font-semibold', typeBadgeColor(t.transaction_type)]">
+                    {{ typeLabel(t.transaction_type) }}
+                  </span>
+                </td>
                   <td class="px-4 sm:px-6 lg:px-8 py-4 sm:py-5 font-semibold whitespace-nowrap">{{ t.gallon_type }}</td>
                   <td class="px-4 sm:px-6 lg:px-8 py-4 sm:py-5">{{ t.quantity }} pcs</td>
                   <td class="px-4 sm:px-6 lg:px-8 py-4 sm:py-5 font-bold text-green-600 whitespace-nowrap">₱{{ Number(t.total_amount).toFixed(2) }}</td>

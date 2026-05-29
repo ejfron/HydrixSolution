@@ -15,6 +15,7 @@ const transactions = ref<{
   price_per_piece: number
   total_amount: number
   status: string
+  transaction_type: string
   created_at: string
 }[]>([])
 
@@ -47,6 +48,16 @@ const statusColor = (status: string) => {
   return 'bg-red-100 text-red-700'
 }
 
+const typeLabel = (type: string) => {
+  if (type === 'reseller') return 'Retailer/Reseller'
+  return 'Regular'
+}
+
+const typeBadgeColor = (type: string) => {
+  if (type === 'reseller') return 'bg-violet-100 text-violet-700'
+  return 'bg-green-100 text-green-700'
+}
+
 const formatDate = (d: string) =>
   new Date(d).toLocaleString('en-PH', {
     month: 'short', day: 'numeric', year: 'numeric',
@@ -62,17 +73,17 @@ onMounted(() => fetchTransactions())
     <main class="flex-1 min-w-0">
       <Navbar />
 
-      <div class="p-8 space-y-6">
+      <div class="p-4 sm:p-6 lg:p-8 space-y-6">
 
         <div class="flex items-center justify-between">
           <div>
-            <h2 class="text-2xl font-bold text-gray-700">Transactions</h2>
-            <p class="text-slate-500 text-sm mt-1">All your dispensing transactions</p>
+            <h2 class="text-xl sm:text-2xl font-bold text-gray-700">Transactions</h2>
+            <p class="text-slate-500 text-xs sm:text-sm mt-1">All your dispensing transactions</p>
           </div>
 
           <button
             @click="fetchTransactions"
-            class="flex items-center gap-2 px-5 py-3 rounded-2xl border border-green-600 text-green-600 hover:bg-green-50 font-semibold text-sm transition cursor-pointer"
+            class="flex items-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl border border-green-600 text-green-600 hover:bg-green-50 font-semibold text-xs sm:text-sm transition cursor-pointer"
           >
             <RefreshCw :size="16" />
             Refresh
@@ -81,45 +92,95 @@ onMounted(() => fetchTransactions())
 
         <div class="bg-white rounded-3xl border border-slate-200 overflow-hidden">
 
+          <!-- Loading state -->
           <div v-if="loading" class="p-10 text-center text-slate-400 text-sm">
             Loading transactions...
           </div>
 
+          <!-- Empty state -->
           <div v-else-if="transactions.length === 0" class="p-10 text-center text-slate-400 text-sm">
             No transactions yet. Go to Dispense to get started!
           </div>
 
-          <table v-else class="w-full">
-            <thead class="bg-slate-50">
-              <tr class="text-gray-600 text-xs">
-                <th class="text-left px-8 py-5">Date & Time</th>
-                <th class="text-left px-8 py-5">Gallon Type</th>
-                <th class="text-left px-8 py-5">Quantity</th>
-                <th class="text-left px-8 py-5">Price/piece</th>
-                <th class="text-left px-8 py-5">Total</th>
-                <th class="text-left px-8 py-5">Status</th>
-              </tr>
-            </thead>
+          <!-- Has transactions: table on lg+, cards on smaller -->
+          <template v-else>
+            <!-- Desktop Table (hidden on mobile) -->
+            <div class="hidden lg:block">
+              <table class="w-full">
+                <thead class="bg-slate-50">
+                  <tr class="text-gray-600 text-xs">
+                    <th class="text-left px-6 py-5">Date & Time</th>
+                    <th class="text-left px-6 py-5">Type</th>
+                    <th class="text-left px-6 py-5">Gallon Type</th>
+                    <th class="text-left px-6 py-5">Qty</th>
+                    <th class="text-left px-6 py-5">Price/pc</th>
+                    <th class="text-left px-6 py-5">Total</th>
+                    <th class="text-left px-6 py-5">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr
+                    v-for="t in transactions"
+                    :key="t.id"
+                    class="border-b border-slate-100 text-gray-700 text-xs hover:bg-slate-50 transition"
+                  >
+                    <td class="px-6 py-4 whitespace-nowrap">{{ formatDate(t.created_at) }}</td>
+                    <td class="px-6 py-4">
+                      <span :class="['px-2 py-1 rounded-full text-xs font-semibold', typeBadgeColor(t.transaction_type)]">
+                        {{ typeLabel(t.transaction_type) }}
+                      </span>
+                    </td>
+                    <td class="px-6 py-4 font-semibold">{{ t.gallon_type }}</td>
+                    <td class="px-6 py-4">{{ t.quantity }} pcs</td>
+                    <td class="px-6 py-4">₱{{ Number(t.price_per_piece).toFixed(2) }}</td>
+                    <td class="px-6 py-4 font-bold text-green-600">₱{{ Number(t.total_amount).toFixed(2) }}</td>
+                    <td class="px-6 py-4">
+                      <span :class="['px-2 py-1 rounded-full text-xs font-semibold', statusColor(t.status)]">
+                        {{ t.status }}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
 
-            <tbody>
-              <tr
+            <!-- Mobile Cards (visible only below lg) -->
+            <div class="lg:hidden divide-y divide-slate-100">
+              <div
                 v-for="t in transactions"
                 :key="t.id"
-                class="border-b border-slate-100 text-gray-700 text-xs hover:bg-slate-50 transition"
+                class="p-4 sm:p-5 space-y-3"
               >
-                <td class="px-8 py-5">{{ formatDate(t.created_at) }}</td>
-                <td class="px-8 py-5 font-semibold">{{ t.gallon_type }}</td>
-                <td class="px-8 py-5">{{ t.quantity }} pcs</td>
-                <td class="px-8 py-5">₱{{ Number(t.price_per_piece).toFixed(2) }}</td>
-                <td class="px-8 py-5 font-bold text-green-600">₱{{ Number(t.total_amount).toFixed(2) }}</td>
-                <td class="px-8 py-5">
-                  <span :class="['px-3 py-1 rounded-full text-xs font-semibold', statusColor(t.status)]">
+                <div class="flex items-center justify-between">
+                  <span class="text-xs text-slate-400">{{ formatDate(t.created_at) }}</span>
+                  <span :class="['px-2 py-1 rounded-full text-xs font-semibold', statusColor(t.status)]">
                     {{ t.status }}
                   </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
+                </div>
+
+                <div class="flex items-start gap-3">
+                  <div class="flex-1 min-w-0">
+                    <h3 class="font-semibold text-sm text-gray-800 truncate">{{ t.gallon_type }}</h3>
+                    <div class="flex items-center gap-2 mt-1">
+                      <span :class="['px-2 py-0.5 rounded-full text-[11px] font-semibold', typeBadgeColor(t.transaction_type)]">
+                        {{ typeLabel(t.transaction_type) }}
+                      </span>
+                      <span class="text-xs text-slate-400">{{ t.quantity }} pcs</span>
+                    </div>
+                  </div>
+                  <div class="text-right">
+                    <p class="text-xs text-slate-400">Price/pc</p>
+                    <p class="text-sm font-semibold text-gray-700">₱{{ Number(t.price_per_piece).toFixed(2) }}</p>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between pt-2 border-t border-slate-50">
+                  <span class="text-xs font-semibold text-slate-500">Total</span>
+                  <span class="font-bold text-green-600 text-sm">₱{{ Number(t.total_amount).toFixed(2) }}</span>
+                </div>
+              </div>
+            </div>
+          </template>
         </div>
 
       </div>

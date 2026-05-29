@@ -1,9 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ middleware: ['auth'] })
 import { useSupabaseClient } from '#imports'
-import { Droplets, X, Plus, Minus, ShoppingCart, CheckCircle } from '@lucide/vue'
-import { useRouter } from 'vue-router'
-import type { Component } from 'vue'
+import { Plus, X, CheckCircle, Trash2, ImagePlus, Droplets, ShoppingCart, Users } from '@lucide/vue'
 import Navbar from '~/components/user/Navbar.vue'
 import Sidebar from '~/components/user/Sidebar.vue'
 import SalesStats from '~/components/user/SalesStats.vue'
@@ -11,46 +9,87 @@ import { useSubscription } from '~/composables/useSubscription'
 
 const client = useSupabaseClient()
 const user = useSupabaseUser()
-const route = useRouter()
 const { isExpired, nextPaymentDate, daysRemaining, checkSubscription } = useSubscription()
 
+// ─── Types ──────────────────────────────────────────────────────
+type GallonType = {
+  id: string
+  name: string
+  size: number
+  unit: string
+  price: number
+  image_url: string | null
+  is_active: boolean
+}
+
+type TransactionType = 'regular' | 'reseller'
+
+// ─── State ──────────────────────────────────────────────────────
+const gallonTypes = ref<GallonType[]>([])
 const stats = ref({ today: 0, yesterday: 0, thisMonth: 0, thisYear: 0, totalGallons: 0 })
 
-type GallonId = '1gal' | '2.5gal' | '5gal'
+// Create gallon modal
+const showCreateModal = ref(false)
+const creating = ref(false)
+const createError = ref('')
+const newName = ref('')
+const newSize = ref<number | null>(null)
+const newUnit = ref('gallon')
+const newPrice = ref<number | null>(null)
+const newImageFile = ref<File | null>(null)
+const newImagePreview = ref<string | null>(null)
 
-const gallonTypes: { id: GallonId; label: string; price: number; icon: Component }[] = [
-  { id: '1gal',   label: '1 Gallon',   price: 10, icon: Droplets },
-  { id: '2.5gal', label: '2.5 Gallon', price: 20, icon: Droplets },
-  { id: '5gal',   label: '5 Gallon',   price: 30, icon: Droplets },
-]
+// Dispense modal
+const showDispenseModal = ref(false)
+const selectedGallon = ref<GallonType | null>(null)
 
-const quantities = ref<Record<GallonId, number>>({
-  '1gal': 0,
-  '2.5gal': 0,
-  '5gal': 0,
-})
+// Transaction type modal
+const showTypeModal = ref(false)
+const selectedType = ref<TransactionType | null>(null)
 
+// Reseller form
+const resellerQty = ref<number | null>(null)
+const resellerPrice = ref<number | null>(null)
+
+// Regular quantity input  // <-- NEW
+const regularQty = ref<number>(1)  // <-- NEW
+
+// Status
 const loading = ref(false)
 const successMsg = ref('')
 const errorMsg = ref('')
+const deletingId = ref<string | null>(null)
 
-const totalAmount = computed(() =>
-  gallonTypes.reduce((sum, g) => sum + (quantities.value[g.id] * g.price), 0)
-)
+// ─── Computed ───────────────────────────────────────────────────
+const resellerTotal = computed(() => {
+  if (!resellerQty.value || !resellerPrice.value) return 0
+  return resellerQty.value * resellerPrice.value
+})
 
-const totalGallons = computed(() =>
-  (Object.values(quantities.value) as number[]).reduce((sum, q) => sum + q, 0)
-)
+// Total for regular dispense  // <-- NEW
+const regularTotal = computed(() => {   // <-- NEW
+  if (!selectedGallon.value) return 0
+  return (regularQty.value || 1) * selectedGallon.value.price
+})
 
-const increment = (id: GallonId) => quantities.value[id]++
-const decrement = (id: GallonId) => {
-  if (quantities.value[id] > 0) quantities.value[id]--
+// ─── Fetch gallon types ─────────────────────────────────────────
+const fetchGallonTypes = async () => {
+  const { data: { session } } = await client.auth.getSession()
+  const userId = user.value?.id ?? session?.user?.id
+  if (!userId) return
+
+  const { data } = await client
+    .from('gallon_types')
+    .select('*')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: true })
+    .returns<GallonType[]>()
+
+  if (data) gallonTypes.value = data
 }
 
-const resetAll = () => {
-  quantities.value = { '1gal': 0, '2.5gal': 0, '5gal': 0 }
-}
-
+// ─── Fetch sales stats ──────────────────────────────────────────
 const fetchSales = async () => {
   const { data: { session } } = await client.auth.getSession()
   const userId = user.value?.id ?? session?.user?.id
@@ -85,10 +124,127 @@ const fetchSales = async () => {
   stats.value = { today, yesterday, thisMonth: month, thisYear: year, totalGallons: 0 }
 }
 
-const dispense = async () => {
-  if (totalGallons.value === 0) {
-    errorMsg.value = 'Please select at least one gallon.'
+// ─── Image upload ───────────────────────────────────────────────
+const handleImageSelect = (e: Event) => {
+  const file = (e.target as HTMLInputElement).files?.[0]
+  if (!file) return
+  newImageFile.value = file
+  newImagePreview.value = URL.createObjectURL(file)
+}
+
+const uploadImage = async (userId: string): Promise<string | null> => {
+  if (!newImageFile.value) return null
+
+  const ext = newImageFile.value.name.split('.').pop()
+  const path = `${userId}/${Date.now()}.${ext}`
+
+  const { error } = await client.storage
+    .from('gallon-images')
+    .upload(path, newImageFile.value)
+
+  if (error) return null
+
+  const { data } = client.storage
+    .from('gallon-images')
+    .getPublicUrl(path)
+
+  return data.publicUrl
+}
+
+// ─── Create gallon type ─────────────────────────────────────────
+const createGallonType = async () => {
+  if (!newName.value || !newSize.value || !newPrice.value) {
+    createError.value = 'Please fill in all required fields.'
     return
+  }
+
+  const { data: { session } } = await client.auth.getSession()
+  const userId = user.value?.id ?? session?.user?.id
+  if (!userId) return
+
+  creating.value = true
+  createError.value = ''
+
+  const imageUrl = await uploadImage(userId)
+
+  const { error } = await (client.from('gallon_types') as any).insert({
+    user_id: userId,
+    name: newName.value,
+    size: newSize.value,
+    unit: newUnit.value,
+    price: newPrice.value,
+    image_url: imageUrl,
+  })
+
+  if (error) {
+    createError.value = error.message
+    creating.value = false
+    return
+  }
+
+  // Reset form
+  newName.value = ''
+  newSize.value = null
+  newUnit.value = 'gallon'
+  newPrice.value = null
+  newImageFile.value = null
+  newImagePreview.value = null
+  creating.value = false
+  showCreateModal.value = false
+
+  await fetchGallonTypes()
+}
+
+// ─── Delete gallon type ─────────────────────────────────────────
+const deleteGallonType = async (id: string) => {
+  deletingId.value = id
+  await (client.from('gallon_types') as any)
+    .update({ is_active: false })
+    .eq('id', id)
+
+  gallonTypes.value = gallonTypes.value.filter(g => g.id !== id)
+  deletingId.value = null
+}
+
+// ─── Open dispense flow ─────────────────────────────────────────
+const openDispense = (gallon: GallonType) => {
+  if (isExpired.value) return
+  selectedGallon.value = gallon
+  selectedType.value = null
+  resellerQty.value = null
+  resellerPrice.value = null
+  regularQty.value = 1   // <-- NEW: reset to 1
+  errorMsg.value = ''
+  successMsg.value = ''
+  showTypeModal.value = true
+}
+
+const selectType = (type: TransactionType) => {
+  selectedType.value = type
+  showTypeModal.value = false
+  showDispenseModal.value = true
+}
+
+const closeDispenseModal = () => {
+  showDispenseModal.value = false
+  showTypeModal.value = false
+  selectedGallon.value = null
+  selectedType.value = null
+  resellerQty.value = null
+  resellerPrice.value = null
+  regularQty.value = 1   // <-- NEW
+  errorMsg.value = ''
+}
+
+// ─── Dispense ───────────────────────────────────────────────────
+const dispense = async () => {
+  if (!selectedGallon.value || !selectedType.value) return
+
+  if (selectedType.value === 'reseller') {
+    if (!resellerQty.value || !resellerPrice.value) {
+      errorMsg.value = 'Please fill in quantity and price.'
+      return
+    }
   }
 
   const { data: { session } } = await client.auth.getSession()
@@ -97,20 +253,24 @@ const dispense = async () => {
 
   loading.value = true
   errorMsg.value = ''
-  successMsg.value = ''
 
-  const inserts = gallonTypes
-    .filter(g => quantities.value[g.id] > 0)
-    .map(g => ({
-      user_id: userId,
-      gallon_type: g.id,
-      quantity: quantities.value[g.id],
-      price_per_piece: g.price,
-      total_amount: quantities.value[g.id] * g.price,
-      status: 'completed',
-    }))
+  const isReseller = selectedType.value === 'reseller'
+  const qty = isReseller ? resellerQty.value : regularQty.value   // <-- NEW: use regularQty
+  const pricePerPiece = isReseller ? resellerPrice.value : selectedGallon.value.price
+  const totalAmount = isReseller ? resellerTotal.value : regularTotal.value  // <-- NEW
 
-  const { error } = await client.from('transactions').insert(inserts as any)
+  const { error } = await client.from('transactions').insert([{
+    user_id: userId,
+    gallon_type: selectedGallon.value.name,           // now allowed after SQL fix
+    gallon_type_id: selectedGallon.value.id,
+    quantity: qty,                                    // will be >1 for regular bulk
+    price_per_piece: pricePerPiece,
+    total_amount: totalAmount,
+    status: 'completed',
+    transaction_type: selectedType.value,
+    reseller_qty: isReseller ? resellerQty.value : null,
+    reseller_price: isReseller ? resellerPrice.value : null,
+  }] as any)
 
   if (error) {
     errorMsg.value = error.message
@@ -118,19 +278,15 @@ const dispense = async () => {
     return
   }
 
-  successMsg.value = `✅ Dispensed! Total: ₱${totalAmount.value.toFixed(2)}`
-  resetAll()
+  successMsg.value = `✅ ${isReseller ? 'Reseller' : 'Regular'} dispense recorded! ₱${totalAmount.toFixed(2)}`
   loading.value = false
+  closeDispenseModal()
   await fetchSales()
-}
-
-const Expired = () => {
-  isExpired.value = true
-  route.push('/user')
 }
 
 onMounted(async () => {
   await checkSubscription()
+  await fetchGallonTypes()
   await fetchSales()
 })
 </script>
@@ -143,68 +299,360 @@ onMounted(async () => {
 
       <!-- Subscription Expired Modal -->
       <Transition name="fade">
-        <div
-          v-if="isExpired"
-          class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6"
-        >
+        <div v-if="isExpired" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
           <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center relative">
-            <div class="absolute bg-green-300 p-1 rounded-full top-4 right-4 cursor-pointer" @click="Expired">
-              <X :size="20" class="text-gray-700" />
-            </div>
             <div class="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
               <span class="text-3xl">⚠️</span>
             </div>
             <h2 class="text-xl font-black text-gray-800 mb-2">Subscription Expired</h2>
-            <p class="text-sm text-slate-500 mb-2">
-              Your subscription has expired. Please pay your monthly fee to continue using the dispense system.
-            </p>
+            <p class="text-sm text-slate-500 mb-4">Your subscription has expired. Please contact admin to renew.</p>
             <div class="bg-red-50 rounded-2xl p-4 mb-6 border border-red-100">
               <p class="text-xs text-slate-500">Payment Due</p>
               <p class="font-black text-red-600 text-lg">{{ nextPaymentDate }}</p>
             </div>
-            
-            <a href="https://www.facebook.com/ej.fron16"
-              target="_blank"
-              class="block w-full py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-bold text-sm transition mb-3"
-            >
+            <a href="https://www.facebook.com/ej.fron16" target="_blank"
+              class="block w-full py-3 rounded-2xl bg-green-600 hover:bg-green-700 text-white font-bold text-sm transition">
               Contact Admin to Pay
             </a>
-            <p class="text-xs text-slate-400">
-              Contact your administrator to process payment and reactivate your account.
-            </p>
           </div>
         </div>
       </Transition>
 
-      <!-- Responsive main container: smaller padding on mobile -->
+      <!-- ─── Transaction Type Modal ─────────────────────── -->
+      <Transition name="fade">
+        <div v-if="showTypeModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
+          <Transition name="scale">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+              <div class="bg-green-600 px-6 py-5 flex items-center justify-between">
+                <div>
+                  <h2 class="text-lg font-black text-white">{{ selectedGallon?.name }}</h2>
+                  <p class="text-green-100 text-xs mt-0.5">Select transaction type</p>
+                </div>
+                <button @click="closeDispenseModal" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center cursor-pointer transition">
+                  <X :size="16" class="text-white" />
+                </button>
+              </div>
+
+              <div class="p-6 space-y-3">
+                <!-- Regular -->
+                <button
+                  @click="selectType('regular')"
+                  class="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 border-slate-200 hover:border-green-400 hover:bg-green-50/50 transition cursor-pointer text-left"
+                >
+                  <div class="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center shrink-0">
+                    <Droplets :size="22" class="text-green-600" />
+                  </div>
+                  <div>
+                    <p class="font-bold text-slate-800">Regular Dispense</p>
+                    <p class="text-xs text-slate-400 mt-0.5">Single or multiple units — ₱{{ selectedGallon?.price }} per piece</p>
+                  </div>
+                </button>
+
+                <!-- Reseller -->
+                <button
+                  @click="selectType('reseller')"
+                  class="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 border-slate-200 hover:border-violet-400 hover:bg-violet-50/50 transition cursor-pointer text-left"
+                >
+                  <div class="w-12 h-12 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
+                    <Users :size="22" class="text-violet-600" />
+                  </div>
+                  <div>
+                    <p class="font-bold text-slate-800">Retailer / Reseller</p>
+                    <p class="text-xs text-slate-400 mt-0.5">Bulk order — set custom quantity and price</p>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </Transition>
+          <div class="absolute inset-0 -z-10" @click="closeDispenseModal" />
+        </div>
+      </Transition>
+
+      <!-- ─── Dispense Modal ─────────────────────────────── -->
+      <Transition name="fade">
+        <div v-if="showDispenseModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
+          <Transition name="scale">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+
+              <!-- Header -->
+              <div :class="['px-6 py-5 flex items-center justify-between', selectedType === 'reseller' ? 'bg-violet-600' : 'bg-green-600']">
+                <div>
+                  <h2 class="text-lg font-black text-white">
+                    {{ selectedType === 'reseller' ? 'Retailer / Reseller' : 'Regular Dispense' }}
+                  </h2>
+                  <p class="text-white/70 text-xs mt-0.5">{{ selectedGallon?.name }}</p>
+                </div>
+                <button @click="closeDispenseModal" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center cursor-pointer transition">
+                  <X :size="16" class="text-white" />
+                </button>
+              </div>
+
+              <div class="p-6">
+
+                <!-- Regular summary + quantity input -->
+                <div v-if="selectedType === 'regular'" class="mb-6 space-y-4">
+                  <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                    <div class="flex items-center gap-3 mb-3">
+                      <div class="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center overflow-hidden shrink-0">
+                        <img v-if="selectedGallon?.image_url" :src="selectedGallon.image_url" class="w-full h-full object-cover" />
+                        <Droplets v-else :size="20" class="text-green-600" />
+                      </div>
+                      <div>
+                        <p class="font-bold text-slate-800">{{ selectedGallon?.name }}</p>
+                        <p class="text-xs text-slate-400">{{ selectedGallon?.size }} {{ selectedGallon?.unit }}</p>
+                      </div>
+                    </div>
+                    <div class="flex items-center justify-between pt-3 border-t border-slate-200">
+                      <span class="text-sm text-slate-500">Price per piece</span>
+                      <span class="font-black text-green-600 text-lg">₱{{ selectedGallon?.price.toFixed(2) }}</span>
+                    </div>
+                  </div>
+
+                  <!-- Quantity input for regular -->
+                  <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                      Number of Gallons
+                    </label>
+                    <input
+                      v-model.number="regularQty"
+                      type="number"
+                      min="1"
+                      placeholder="e.g. 3"
+                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                    >
+                  </div>
+
+                  <!-- Regular total preview -->
+                  <div v-if="regularQty" class="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                    <div class="flex items-center justify-between text-sm">
+                      <span class="text-slate-500">{{ regularQty }} × ₱{{ selectedGallon?.price }}</span>
+                      <span class="font-black text-green-600 text-lg">₱{{ regularTotal.toFixed(2) }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Reseller form (unchanged) -->
+                <div v-else class="space-y-4 mb-6">
+                  <div class="bg-violet-50 rounded-2xl p-4 border border-violet-100">
+                    <p class="text-xs font-semibold text-violet-600 mb-1">{{ selectedGallon?.name }}</p>
+                    <p class="text-xs text-slate-400">Regular price: ₱{{ selectedGallon?.price }}</p>
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                      Number of Gallons <span class="text-red-400">*</span>
+                    </label>
+                    <input
+                      v-model.number="resellerQty"
+                      type="number"
+                      min="1"
+                      placeholder="e.g. 12"
+                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm"
+                    >
+                  </div>
+
+                  <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                      Price per Gallon <span class="text-red-400">*</span>
+                    </label>
+                    <div class="relative">
+                      <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">₱</span>
+                      <input
+                        v-model.number="resellerPrice"
+                        type="number"
+                        min="1"
+                        placeholder="e.g. 20"
+                        class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 pl-8 text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm"
+                      >
+                    </div>
+                  </div>
+
+                  <!-- Total preview -->
+                  <div v-if="resellerQty && resellerPrice" class="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                    <div class="flex items-center justify-between text-sm">
+                      <span class="text-slate-500">{{ resellerQty }} × ₱{{ resellerPrice }}</span>
+                      <span class="font-black text-violet-600 text-lg">₱{{ resellerTotal.toFixed(2) }}</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Error -->
+                <div v-if="errorMsg" class="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm">
+                  {{ errorMsg }}
+                </div>
+
+                <!-- Dispense Button -->
+                <button
+                  @click="dispense"
+                  :disabled="loading"
+                  :class="[
+                    'w-full py-4 rounded-2xl font-black text-sm text-white transition cursor-pointer disabled:opacity-50',
+                    selectedType === 'reseller'
+                      ? 'bg-violet-600 hover:bg-violet-700'
+                      : 'bg-green-600 hover:bg-green-700'
+                  ]"
+                >
+                  {{ loading ? 'Recording...' : `Confirm Dispense` }}
+                </button>
+              </div>
+            </div>
+          </Transition>
+          <div class="absolute inset-0 -z-10" @click="closeDispenseModal" />
+        </div>
+      </Transition>
+
+      <!-- ─── Create Gallon Modal ────────────────────────── -->
+      <Transition name="fade">
+        <div v-if="showCreateModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
+          <Transition name="scale">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto">
+
+              <div class="bg-green-600 px-6 py-5 flex items-center justify-between sticky top-0">
+                <div>
+                  <h2 class="text-lg font-black text-white">Create Gallon Type</h2>
+                  <p class="text-green-100 text-xs mt-0.5">Add a new product to your station</p>
+                </div>
+                <button @click="showCreateModal = false" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center cursor-pointer transition">
+                  <X :size="16" class="text-white" />
+                </button>
+              </div>
+
+              <div class="p-6 space-y-4">
+
+                <!-- Image Upload -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-2">Product Image</label>
+                  <div
+                    class="relative w-full h-36 rounded-2xl border-2 border-dashed border-slate-200 hover:border-green-400 transition cursor-pointer overflow-hidden flex items-center justify-center bg-slate-50"
+                    @click="($refs.imageInput as HTMLInputElement)?.click()"
+                  >
+                    <img v-if="newImagePreview" :src="newImagePreview" class="absolute inset-0 w-full h-full object-cover" />
+                    <div v-else class="flex flex-col items-center gap-2 text-slate-400">
+                      <ImagePlus :size="28" />
+                      <p class="text-xs">Click to upload image</p>
+                    </div>
+                    <input ref="imageInput" type="file" accept="image/*" class="hidden" @change="handleImageSelect" />
+                  </div>
+                </div>
+
+                <!-- Name -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-2">
+                    Gallon Name <span class="text-red-400">*</span>
+                  </label>
+                  <input
+                    v-model="newName"
+                    type="text"
+                    placeholder="e.g. Round 5 Gallon, Slim 2.5 Gallon"
+                    class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  >
+                </div>
+
+                <!-- Size + Unit -->
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">
+                      Size <span class="text-red-400">*</span>
+                    </label>
+                    <input
+                      v-model.number="newSize"
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      placeholder="e.g. 5"
+                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                    >
+                  </div>
+                  <div>
+                    <label class="block text-sm font-semibold text-gray-700 mb-2">Unit</label>
+                    <select
+                      v-model="newUnit"
+                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                    >
+                      <option value="gallon">Gallon</option>
+                      <option value="liter">Liter</option>
+                      <option value="ml">mL</option>
+                    </select>
+                  </div>
+                </div>
+
+                <!-- Price -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-2">
+                    Regular Price <span class="text-red-400">*</span>
+                  </label>
+                  <div class="relative">
+                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">₱</span>
+                    <input
+                      v-model.number="newPrice"
+                      type="number"
+                      min="1"
+                      placeholder="e.g. 30"
+                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 pl-8 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                    >
+                  </div>
+                </div>
+
+                <!-- Error -->
+                <div v-if="createError" class="px-4 py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm">
+                  {{ createError }}
+                </div>
+
+                <!-- Buttons -->
+                <div class="flex gap-3 pt-2">
+                  <button
+                    @click="createGallonType"
+                    :disabled="creating"
+                    class="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white py-3 rounded-2xl font-bold text-sm transition cursor-pointer"
+                  >
+                    {{ creating ? 'Creating...' : 'Create Gallon' }}
+                  </button>
+                  <button
+                    @click="showCreateModal = false"
+                    class="flex-1 border border-gray-200 hover:bg-gray-50 text-gray-700 py-3 rounded-2xl font-semibold text-sm transition cursor-pointer"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </Transition>
+          <div class="absolute inset-0 -z-10" @click="showCreateModal = false" />
+        </div>
+      </Transition>
+
+      <!-- ─── Main Content ───────────────────────────────── -->
       <div class="p-4 sm:p-8 space-y-6 sm:space-y-8">
 
-        <div>
-          <h2 class="text-xl sm:text-2xl font-bold text-gray-700">Dispense Water</h2>
-          <p class="text-slate-500 text-xs sm:text-sm mt-1">Select gallon type and quantity to dispense</p>
+        <!-- Header -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 class="text-xl sm:text-2xl font-bold text-gray-700">Dispense Water</h2>
+            <p class="text-slate-500 text-xs sm:text-sm mt-1">Manage your gallon types and dispense</p>
+          </div>
+          <button
+            @click="showCreateModal = true"
+            class="flex items-center justify-center gap-2 px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-sm transition cursor-pointer"
+          >
+            <Plus :size="16" />
+            Add Gallon Type
+          </button>
         </div>
 
-        <!-- 7-day warning banner (already responsive) -->
-        <div
-          v-if="!isExpired && daysRemaining <= 7 && daysRemaining > 0"
-          class="bg-yellow-50 border border-yellow-200 rounded-2xl px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3"
-        >
+        <!-- Warning banner -->
+        <div v-if="!isExpired && daysRemaining <= 7 && daysRemaining > 0"
+          class="bg-yellow-50 border border-yellow-200 rounded-2xl px-4 sm:px-6 py-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
           <div>
             <p class="font-bold text-yellow-700 text-sm">⚠️ Subscription Expiring Soon</p>
-            <p class="text-xs text-yellow-600 mt-1">
-              Your subscription expires in {{ daysRemaining }} day(s) — due {{ nextPaymentDate }}
-            </p>
+            <p class="text-xs text-yellow-600 mt-1">Expires in {{ daysRemaining }} day(s) — {{ nextPaymentDate }}</p>
           </div>
-          
-          <a href="https://www.facebook.com/ej.fron16"
-            target="_blank"
-            class="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl text-xs font-bold transition cursor-pointer w-full sm:w-auto text-center"
-          >
+          <a href="https://www.facebook.com/ej.fron16" target="_blank"
+            class="px-4 py-2 bg-yellow-500 hover:bg-yellow-600 text-white rounded-xl text-xs font-bold transition w-full sm:w-auto text-center">
             Pay Now
           </a>
         </div>
 
-        <!-- Sales Stats (already responsive from previous update) -->
+        <!-- Sales Stats -->
         <SalesStats
           :today="stats.today"
           :yesterday="stats.yesterday"
@@ -212,106 +660,83 @@ onMounted(async () => {
           :this-year="stats.thisYear"
         />
 
-        <!-- Gallon Cards: responsive grid -->
-        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+        <!-- Success message -->
+        <Transition name="fade">
+          <div v-if="successMsg" class="px-5 py-4 bg-green-50 border border-green-200 rounded-2xl text-green-700 text-sm font-semibold flex items-center gap-2">
+            <CheckCircle :size="16" />
+            {{ successMsg }}
+          </div>
+        </Transition>
+
+        <!-- Empty state -->
+        <div v-if="gallonTypes.length === 0"
+          class="bg-white rounded-3xl border border-dashed border-slate-300 p-12 text-center">
+          <div class="w-16 h-16 rounded-2xl bg-green-100 flex items-center justify-center mx-auto mb-4">
+            <Droplets :size="28" class="text-green-600" />
+          </div>
+          <h3 class="font-bold text-slate-700 text-lg mb-2">No gallon types yet</h3>
+          <p class="text-slate-400 text-sm mb-6">Create your first gallon type to start dispensing</p>
+          <button
+            @click="showCreateModal = true"
+            class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-sm transition cursor-pointer"
+          >
+            <Plus :size="14" class="inline mr-1" />
+            Create First Gallon
+          </button>
+        </div>
+
+        <!-- Gallon Type Cards -->
+        <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           <div
             v-for="g in gallonTypes"
             :key="g.id"
-            class="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-sm"
+            class="group relative bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300"
           >
-            <div class="w-12 h-12 sm:w-16 sm:h-16 rounded-2xl bg-green-100 flex items-center justify-center mb-4 mx-auto">
-              <component :is="g.icon" class="text-green-600" :size="24" />
-            </div>
-            <h3 class="text-center text-xl sm:text-2xl font-bold text-gray-700 mb-1">{{ g.label }}</h3>
-            <p class="text-center text-green-600 font-bold text-base sm:text-lg mb-4">₱{{ g.price }} / piece</p>
+            <!-- Top accent -->
+            <div class="absolute top-0 left-0 w-full h-0.5 bg-green-600" />
 
-            <!-- Quantity Control -->
-            <div class="flex items-center justify-center gap-3 sm:gap-4">
-              <button
-                @click="decrement(g.id)"
-                class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-slate-100 hover:bg-slate-200 flex items-center justify-center cursor-pointer transition"
-              >
-                <Minus :size="14" class="text-gray-600" />
-              </button>
-
-              <span class="text-xl sm:text-2xl font-bold text-gray-700 w-8 sm:w-10 text-center">
-                {{ quantities[g.id] }}
-              </span>
-
-              <button
-                @click="increment(g.id)"
-                class="w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-green-600 hover:bg-green-700 flex items-center justify-center cursor-pointer transition"
-              >
-                <Plus :size="14" class="text-white" />
-              </button>
-            </div>
-
-            <!-- Subtotal -->
-            <div class="mt-3 sm:mt-4 text-center text-xs sm:text-sm text-slate-500">
-              Subtotal:
-              <span class="font-bold text-gray-700">
-                ₱{{ (quantities[g.id] * g.price).toFixed(2) }}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        <!-- Order Summary: responsive column/row layout -->
-        <div class="bg-white rounded-3xl border border-slate-200 p-4 sm:p-6 shadow-sm">
-          <h3 class="font-bold text-gray-700 text-base sm:text-lg mb-4 flex items-center gap-2">
-            <ShoppingCart :size="18" class="text-green-600" />
-            Order Summary
-          </h3>
-
-          <div class="space-y-2 sm:space-y-3 mb-4 sm:mb-6">
-            <div
-              v-for="g in gallonTypes.filter(g => quantities[g.id] > 0)"
-              :key="g.id"
-              class="flex items-center justify-between text-xs sm:text-sm"
+            <!-- Delete button -->
+            <button
+              @click.stop="deleteGallonType(g.id)"
+              :disabled="deletingId === g.id"
+              class="absolute top-3 right-3 z-10 w-8 h-8 rounded-lg bg-white/80 hover:bg-red-50 border border-slate-200 hover:border-red-200 flex items-center justify-center cursor-pointer transition opacity-0 group-hover:opacity-100"
             >
-              <span class="text-slate-500">{{ g.label }} × {{ quantities[g.id] }}</span>
-              <span class="font-semibold text-gray-700">₱{{ (quantities[g.id] * g.price).toFixed(2) }}</span>
+              <Trash2 :size="14" :class="deletingId === g.id ? 'text-slate-300' : 'text-slate-400 hover:text-red-500'" />
+            </button>
+
+            <!-- Image -->
+            <div class="h-32 bg-gradient-to-br from-green-50 to-slate-50 flex items-center justify-center overflow-hidden">
+              <img v-if="g.image_url" :src="g.image_url" :alt="g.name" class="h-full w-full object-cover" />
+              <div v-else class="flex flex-col items-center gap-2 text-slate-300">
+                <Droplets :size="36" />
+              </div>
             </div>
 
-            <div v-if="totalGallons === 0" class="text-slate-400 text-xs sm:text-sm text-center py-2">
-              No items selected
-            </div>
-          </div>
+            <!-- Content -->
+            <div class="p-5">
+              <h3 class="font-bold text-slate-800 text-base mb-0.5">{{ g.name }}</h3>
+              <p class="text-xs text-slate-400 mb-4">{{ g.size }} {{ g.unit }}</p>
 
-          <!-- Flex: column on mobile, row on larger screens -->
-          <div class="border-t border-slate-100 pt-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-            <div>
-              <p class="text-slate-500 text-xs sm:text-sm">
-                Total Gallons: <span class="font-bold text-gray-700">{{ totalGallons }}</span>
-              </p>
-              <p class="text-lg sm:text-xl font-black text-green-600 mt-1">Total: ₱{{ totalAmount.toFixed(2) }}</p>
-            </div>
+              <!-- Price badges -->
+              <div class="flex items-center gap-2 mb-5">
+                <span class="px-3 py-1.5 rounded-xl bg-green-100 text-green-700 text-xs font-bold">
+                  Regular ₱{{ g.price }}
+                </span>
+                <span class="px-3 py-1.5 rounded-xl bg-violet-100 text-violet-700 text-xs font-bold">
+                  Reseller
+                </span>
+              </div>
 
-            <div class="flex flex-col sm:flex-row gap-3">
+              <!-- Dispense Button -->
               <button
-                @click="resetAll"
-                class="w-full sm:w-auto px-4 sm:px-6 py-2.5 sm:py-3 rounded-2xl border border-slate-200 text-gray-600 hover:bg-slate-50 font-semibold text-xs sm:text-sm transition cursor-pointer"
+                @click="openDispense(g)"
+                :disabled="isExpired"
+                class="w-full py-3 rounded-2xl bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-sm transition cursor-pointer flex items-center justify-center gap-2"
               >
-                Reset
-              </button>
-
-              <button
-                @click="dispense"
-                :disabled="loading || totalGallons === 0 || isExpired"
-                class="w-full sm:w-auto px-6 sm:px-8 py-2.5 sm:py-3 rounded-2xl bg-green-600 hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm transition cursor-pointer"
-              >
-                {{ loading ? 'Processing...' : 'Dispense' }}
+                <ShoppingCart :size="15" />
+                Dispense
               </button>
             </div>
-          </div>
-
-          <!-- Messages -->
-          <div v-if="successMsg" class="mt-4 px-3 sm:px-4 py-2.5 sm:py-3 bg-green-50 border border-green-200 rounded-2xl text-green-600 text-xs sm:text-sm flex items-center gap-2">
-            <CheckCircle :size="14" />
-            {{ successMsg }}
-          </div>
-          <div v-if="errorMsg" class="mt-4 px-3 sm:px-4 py-2.5 sm:py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-xs sm:text-sm">
-            {{ errorMsg }}
           </div>
         </div>
 
@@ -323,4 +748,6 @@ onMounted(async () => {
 <style scoped>
 .fade-enter-active, .fade-leave-active { transition: opacity 0.25s ease; }
 .fade-enter-from, .fade-leave-to { opacity: 0; }
+.scale-enter-active, .scale-leave-active { transition: all 0.2s ease; }
+.scale-enter-from, .scale-leave-to { opacity: 0; transform: scale(0.95); }
 </style>
