@@ -83,7 +83,7 @@
 
             <div class="mt-4">
               <span class="text-5xl font-extrabold text-gray-900">
-                ₱599
+                ₱499
               </span>
 
               <span class="text-gray-500">
