@@ -171,7 +171,7 @@ const deleteUser = async () => {
   const { error } = await client.rpc('delete_user_by_id', { user_id: deletingId.value } as any)
 
   if (error) {
-    console.error('Delete error:', error.message)
+  
     deleting.value = false
     return
   }

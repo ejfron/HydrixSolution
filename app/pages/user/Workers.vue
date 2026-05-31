@@ -7,7 +7,8 @@ import { useRoute } from '#app'
 import {
   Plus, X, Trash2, ChevronDown, ChevronUp,
   Users2, Wallet, Clock, CalendarDays,
-  CheckCircle, AlertCircle, Banknote, Save, RefreshCw, Lock
+  CheckCircle, AlertCircle, Banknote, Save, RefreshCw, Lock,
+  Check
 } from '@lucide/vue'
 import Navbar from '~/components/user/Navbar.vue'
 import Sidebar from '~/components/user/Sidebar.vue'
@@ -271,7 +272,10 @@ const markAllWorkDays = () => {
 }
 
 const setAllHours = (hours: number) => {
-  dayEntries.value.forEach(e => { if (e?.isWorkDay) e.hoursWorked = hours })
+  if (!hours || hours <= 0) return
+  dayEntries.value.forEach(e => {
+    if (e?.isWorkDay) e.hoursWorked = hours
+  })
 }
 
 const totalWorkDays = computed(() => dayEntries.value.filter(e => e?.isWorkDay).length)
@@ -763,11 +767,19 @@ const addCashAdvance = async () => {
                     <div class="flex gap-2">
                       <button @click="markAllWorkDays"
                         class="px-3 py-2.5 bg-green-100 hover:bg-green-200 text-green-700 rounded-xl text-xs font-semibold transition cursor-pointer">
-                        ✅ All Work Days
+                        <span>
+                          <Check :size="14" class="inline-block" />
+                        </span>
+                        <span>
+                           All Work Days
+                        </span>
+                       
                       </button>
-                      <button @click="setAllHours(getWorker(selectedWorkerId!)?.regular_hours ?? 8)"
+                      
+                      <button @click="setAllHours(getWorker(selectedWorkerId ?? '')?.regular_hours ?? 8)"
                         class="px-3 py-2.5 bg-blue-100 hover:bg-blue-200 text-blue-700 rounded-xl text-xs font-semibold transition cursor-pointer">
-                        🔄 Reset Hours
+                        <span><RefreshCw :size="14" class="inline-block" /></span>
+                        <span> Reset Hours</span>
                       </button>
                     </div>
 

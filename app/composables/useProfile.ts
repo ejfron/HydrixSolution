@@ -27,9 +27,6 @@ export const useProfile = () => {
           role: string
           email: string
         }>()
-
-      console.log('✅ profile via session:', data)
-      console.log('🔴 error:', error)
       if (data) profile.value = data
       return
     }
@@ -46,8 +43,7 @@ export const useProfile = () => {
         email: string
       }>()
 
-    console.log('✅ profile via user:', data)
-    console.log('🔴 error:', error)
+
     if (data) profile.value = data
   }
 
