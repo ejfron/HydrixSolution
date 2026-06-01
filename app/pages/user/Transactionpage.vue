@@ -5,6 +5,7 @@ import { RefreshCw } from '@lucide/vue'
 import Navbar from '~/components/user/Navbar.vue'
 import Sidebar from '~/components/user/Sidebar.vue'
 
+
 const client = useSupabaseClient()
 const user = useSupabaseUser()
 
@@ -20,6 +21,8 @@ const transactions = ref<{
 }[]>([])
 
 const loading = ref(true)
+// use string for v-model of <input type="date"> which yields YYYY-MM-DD strings
+const selectedDate = ref<string | null>(null)
 
 const fetchTransactions = async () => {
   loading.value = true
@@ -32,13 +35,26 @@ const fetchTransactions = async () => {
     return
   }
 
-  const { data } = await client
+  let query = client
     .from('transactions')
     .select('*')
     .eq('user_id', userId)
-    .order('created_at', { ascending: false })
 
-  if (data) transactions.value = data
+  // 🔥 DATE FILTER LOGIC
+  if (selectedDate.value) {
+    const start = `${selectedDate.value}T00:00:00`
+    const end = `${selectedDate.value}T23:59:59`
+
+    query = query
+      .gte('created_at', start)
+      .lte('created_at', end)
+  }
+
+  const { data } = await query.order('created_at', {
+    ascending: false
+  })
+
+  transactions.value = data || []
   loading.value = false
 }
 
@@ -64,6 +80,10 @@ const formatDate = (d: string) =>
     hour: '2-digit', minute: '2-digit'
   })
 
+watch(selectedDate, () => {
+  fetchTransactions()
+})
+
 onMounted(() => fetchTransactions())
 </script>
 
@@ -81,6 +101,25 @@ onMounted(() => fetchTransactions())
             <p class="text-slate-500 text-xs sm:text-sm mt-1">All your dispensing transactions</p>
           </div>
 
+          <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+
+            
+          <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+            <input
+              v-model="selectedDate"
+              type="date"
+              class="px-4 py-3 text-gray-700 border border-green-600 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
+            />
+
+            <button
+              v-if="selectedDate"
+              @click="selectedDate = null"
+              class="px-4 py-3 border border-red-200 text-red-600 rounded-2xl text-sm font-semibold hover:bg-red-50"
+            >
+              Clear Filter
+            </button>
+          </div>
+
           <button
             @click="fetchTransactions"
             class="flex items-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl border border-green-600 text-green-600 hover:bg-green-50 font-semibold text-xs sm:text-sm transition cursor-pointer"
@@ -88,6 +127,10 @@ onMounted(() => fetchTransactions())
             <RefreshCw :size="16" />
             Refresh
           </button>
+
+
+          </div>
+
         </div>
 
         <div class="bg-white rounded-3xl border border-slate-200 overflow-hidden">

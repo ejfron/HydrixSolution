@@ -15,6 +15,7 @@ import Sidebar from '~/components/user/Sidebar.vue'
 import PasscodeSetup from '~/components/user/PasscodeSetup.vue'
 import PasscodeVerify from '~/components/user/PasscodeVerify.vue'
 import PasscodeReset from '~/components/user/PasscodeReset.vue'
+import DeleteConfirmModal from '~/components/user/DeleteConfirmModal.vue'
 
 const client = useSupabaseClient()
 const user = useSupabaseUser()
@@ -88,6 +89,9 @@ const {
 
 const isUnlocked = ref(false)
 const showResetModal = ref(false)
+const showDeleteModal = ref(false)
+const workerToDelete = ref<string | null>(null)
+const deletingWorker = ref(false)
 
 onBeforeUnmount(() => resetAuth())
 
@@ -393,11 +397,35 @@ const createWorker = async () => {
   creatingWorker.value = false
 }
 
-const deleteWorker = async (id: string) => {
-  if (!confirm('Delete this worker?')) return
-  await (client.from('workers') as any).update({ is_active: false }).eq('id', id)
-  workers.value = workers.value.filter(w => w.id !== id)
-  if (expandedWorker.value === id) expandedWorker.value = null
+const openDeleteWorker = (id: string) => {
+  workerToDelete.value = id
+  showDeleteModal.value = true
+}
+
+const deleteWorker = async () => {
+  if (!workerToDelete.value) return
+
+  deletingWorker.value = true
+
+  const { error } = await (client.from('workers') as any)
+    .update({ is_active: false })
+    .eq('id', workerToDelete.value)
+
+  if (!error) {
+    workers.value = workers.value.filter(
+      w => w.id !== workerToDelete.value
+    )
+
+    if (expandedWorker.value === workerToDelete.value) {
+      expandedWorker.value = null
+    }
+
+    showSuccess('Worker deleted successfully!')
+  }
+
+  deletingWorker.value = false
+  showDeleteModal.value = false
+  workerToDelete.value = null
 }
 
 // ─── Work log ─────────────────────────────────────────────────────
@@ -610,6 +638,14 @@ const addCashAdvance = async () => {
 </script>
 
 <template>
+        <DeleteConfirmModal
+                :show="showDeleteModal"
+                title="Delete Worker"
+                message="Are you sure you want to delete this worker? All their work and logs will be deleted as well."
+                :loading="deletingWorker"
+                @cancel="showDeleteModal = false"
+                @confirm="deleteWorker"
+              />
   <div class="min-h-screen bg-[#f5f7fb] flex">
     <Sidebar />
     <main class="flex-1 min-w-0">
@@ -1156,7 +1192,7 @@ const addCashAdvance = async () => {
                     class="flex items-center gap-1.5 px-4 py-2 bg-red-500 hover:bg-red-600 text-white rounded-xl text-xs font-bold transition cursor-pointer">
                     <Wallet :size="13" /> Cash Advance
                   </button>
-                  <button @click="deleteWorker(w.id)"
+                  <button @click="openDeleteWorker(w.id)"
                     class="flex items-center gap-1.5 px-4 py-2 border border-red-200 text-red-500 hover:bg-red-50 rounded-xl text-xs font-semibold transition cursor-pointer">
                     <Trash2 :size="13" /> Remove
                   </button>
@@ -1167,6 +1203,8 @@ const addCashAdvance = async () => {
                   </button>
                 </div>
               </div>
+
+        
 
               <Transition name="slide">
                 <div v-if="expandedWorker === w.id" class="border-t border-slate-100">

@@ -103,45 +103,37 @@ const createUser = async () => {
   createError.value = ''
   createSuccess.value = ''
 
-  const { data: signUpData, error } = await client.auth.signUp({
-    email: newEmail.value,
-    password: newPassword.value,
-    options: {
-      data: {
-        full_name: newFullName.value,
-        station_name: newStationName.value,
-      }
-    }
-  })
+  const today = new Date()
+  const nextPayment = new Date()
+  nextPayment.setMonth(nextPayment.getMonth() + 1)
 
-  if (error) {
-    createError.value = error.message
-    creating.value = false
-    return
-  }
-
-  if (signUpData.user?.id) {
-    const today = new Date()
-    const nextPayment = new Date()
-    nextPayment.setMonth(nextPayment.getMonth() + 1)
-
-    await (client.from('profiles') as any)
-      .update({
+  try {
+    // Use server route — does NOT replace admin session
+    await $fetch('/api/create-user', {
+      method: 'POST',
+      body: {
+        email: newEmail.value,
+        password: newPassword.value,
+        fullName: newFullName.value,
+        stationName: newStationName.value,
         location: newLocation.value,
-        subscription_start: today.toISOString().split('T')[0],
-        next_payment_date: nextPayment.toISOString().split('T')[0],
-        subscription_status: 'active',
-      })
-      .eq('id', signUpData.user.id)
+        subscriptionStart: today.toISOString().split('T')[0],
+        nextPaymentDate: nextPayment.toISOString().split('T')[0],
+      }
+    })
+
+    createSuccess.value = `Account for ${newStationName.value} created successfully!`
+    creating.value = false
+
+    setTimeout(async () => {
+      await fetchUsers()
+      closeModal()
+    }, 1500)
+
+  } catch (err: any) {
+    createError.value = err.data?.message || err.message || 'Failed to create user'
+    creating.value = false
   }
-
-  createSuccess.value = `Account for ${newStationName.value} created successfully!`
-  creating.value = false
-
-  setTimeout(async () => {
-    await fetchUsers()
-    closeModal()
-  }, 1500)
 }
 
 const renewSubscription = async (userId: string) => {
@@ -171,7 +163,6 @@ const deleteUser = async () => {
   const { error } = await client.rpc('delete_user_by_id', { user_id: deletingId.value } as any)
 
   if (error) {
-  
     deleting.value = false
     return
   }
@@ -193,18 +184,18 @@ onMounted(() => fetchUsers())
 </script>
 
 <template>
-  <div class="relative w-full overflow-hidden p-3">
+  <div class="relative w-full overflow-hidden p-3 sm:p-4">
     <div class="relative z-10">
 
       <!-- Header -->
-      <div class="flex items-center justify-between max-w-full">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h2 class="text-xl text-gray-700 font-bold">Water Stations</h2>
           <p class="text-sm text-slate-500 mt-1">{{ users.length }} station(s) registered</p>
         </div>
         <button
           @click="openModal"
-          class="px-10 py-3 cursor-pointer rounded-sm bg-green-600 text-white hover:bg-green-700 hover:scale-105 transition-all duration-300 font-bold text-sm flex items-center gap-3"
+          class="w-full sm:w-auto px-6 py-3 cursor-pointer rounded-sm bg-green-600 text-white hover:bg-green-700 hover:scale-105 transition-all duration-300 font-bold text-sm flex items-center justify-center gap-3"
         >
           <Plus class="w-5 h-5" />
           Create User
@@ -223,27 +214,27 @@ onMounted(() => fetchUsers())
         No stations registered yet.
       </div>
 
-      <!-- Cards -->
-      <div v-else class="mt-5 grid grid-cols-3 gap-5">
+      <!-- Cards — 1 col on mobile, 2 on tablet, 3 on desktop -->
+      <div v-else class="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
         <div
           v-for="user in users"
           :key="user.id"
-          class="group relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-xl transition-all duration-300"
+          class="group relative overflow-hidden rounded-3xl border border-slate-200 bg-white p-5 sm:p-6 shadow-sm hover:shadow-xl transition-all duration-300"
         >
           <div class="absolute top-0 left-0 w-full h-0.5 bg-green-600" />
 
           <!-- Card Header -->
           <div class="flex items-start justify-between mb-5">
-            <div class="flex items-center gap-4">
-              <div class="w-14 h-14 rounded-2xl bg-green-100 flex items-center justify-center">
+            <div class="flex items-center gap-3 sm:gap-4 min-w-0">
+              <div class="w-12 h-12 sm:w-14 sm:h-14 shrink-0 rounded-2xl bg-green-100 flex items-center justify-center">
                 <Droplets class="text-green-600" />
               </div>
-              <div>
-                <h2 class="text-sm font-bold text-slate-800">
+              <div class="min-w-0">
+                <h2 class="text-sm font-bold text-slate-800 truncate">
                   {{ user.station_name || 'Unnamed Station' }}
                 </h2>
-                <p class="text-xs text-slate-500 flex items-center gap-1 mt-0.5">
-                  <MapPin :size="10" />
+                <p class="text-xs text-slate-500 flex items-center gap-1 mt-0.5 truncate">
+                  <MapPin :size="10" class="shrink-0" />
                   {{ user.location || 'No location' }}
                 </p>
               </div>
@@ -251,32 +242,32 @@ onMounted(() => fetchUsers())
 
             <button
               @click="confirmDelete(user.id, user.station_name || 'this station')"
-              class="w-10 h-10 cursor-pointer rounded-xl hover:bg-red-100 text-slate-400 hover:text-red-500 flex items-center justify-center transition"
+              class="w-9 h-9 sm:w-10 sm:h-10 shrink-0 cursor-pointer rounded-xl hover:bg-red-100 text-slate-400 hover:text-red-500 flex items-center justify-center transition ml-2"
             >
-              <Trash2 :size="18" />
+              <Trash2 :size="16" />
             </button>
           </div>
 
           <!-- Card Body -->
-          <div class="space-y-4">
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-slate-500">Owner</span>
-              <span class="text-sm text-slate-700">{{ user.full_name || '—' }}</span>
+          <div class="space-y-3 sm:space-y-4">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs text-slate-500 shrink-0">Owner</span>
+              <span class="text-sm text-slate-700 truncate text-right">{{ user.full_name || '—' }}</span>
             </div>
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-slate-500">Email</span>
-              <span class="text-sm text-slate-700 truncate max-w-40">{{ user.email }}</span>
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs text-slate-500 shrink-0">Email</span>
+              <span class="text-sm text-slate-700 truncate max-w-[160px] sm:max-w-40 text-right">{{ user.email }}</span>
             </div>
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-slate-500">Status</span>
-              <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 text-green-700 text-sm font-semibold">
-                <div class="w-2 h-2 rounded-full bg-green-500" />
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs text-slate-500 shrink-0">Status</span>
+              <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs sm:text-sm font-semibold">
+                <div class="w-2 h-2 rounded-full bg-green-500 shrink-0" />
                 Online
               </div>
             </div>
-            <div class="flex items-center justify-between">
-              <span class="text-xs text-slate-500">Joined</span>
-              <span class="text-sm text-slate-700">
+            <div class="flex items-center justify-between gap-2">
+              <span class="text-xs text-slate-500 shrink-0">Joined</span>
+              <span class="text-sm text-slate-700 text-right">
                 {{ new Date(user.created_at).toLocaleDateString('en-PH', {
                   year: 'numeric', month: 'short', day: 'numeric'
                 }) }}
@@ -286,14 +277,14 @@ onMounted(() => fetchUsers())
             <!-- Subscription Status -->
             <div
               :class="[
-                'rounded-xl px-3 py-2 text-xs font-semibold flex items-center justify-between',
+                'rounded-xl px-3 py-2 text-xs font-semibold flex items-center justify-between gap-2',
                 user.subscription_status === 'active'
                   ? 'bg-green-50 text-green-700 border border-green-100'
                   : 'bg-red-50 text-red-600 border border-red-100'
               ]"
             >
               <span>{{ user.subscription_status === 'active' ? 'Active' : 'Expired' }}</span>
-              <span>Due: {{ user.next_payment_date || '—' }}</span>
+              <span class="truncate">Due: {{ user.next_payment_date || '—' }}</span>
             </div>
 
             <!-- Renew button if expired -->
@@ -307,7 +298,7 @@ onMounted(() => fetchUsers())
             </button>
 
             <!-- Total Sales -->
-            <div class="mt-2 rounded-2xl bg-slate-50 p-4 border border-slate-100">
+            <div class="mt-2 rounded-2xl bg-slate-50 p-3 sm:p-4 border border-slate-100">
               <p class="text-xs text-slate-500 mb-1">Total Sales</p>
               <h1 class="text-lg font-bold text-green-700">
                 ₱{{ user.total_sales.toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}
@@ -319,12 +310,12 @@ onMounted(() => fetchUsers())
           </div>
 
           <!-- Card Footer -->
-          <div class="mt-6 flex items-center gap-3">
+          <div class="mt-5 sm:mt-6 flex items-center gap-3">
             <button class="flex-1 py-3 text-xs cursor-pointer rounded-lg bg-green-600 hover:bg-green-700 text-white font-semibold transition">
               View Station
             </button>
-            <button class="w-12 h-12 cursor-pointer flex items-center justify-center rounded-2xl border border-slate-200 hover:bg-slate-100 transition">
-              <Settings class="text-gray-700" />
+            <button class="w-11 h-11 sm:w-12 sm:h-12 cursor-pointer flex items-center justify-center rounded-2xl border border-slate-200 hover:bg-slate-100 transition shrink-0">
+              <Settings class="text-gray-700" :size="18" />
             </button>
           </div>
         </div>
@@ -333,13 +324,13 @@ onMounted(() => fetchUsers())
 
     <!-- Delete Modal -->
     <Transition name="fade">
-      <div v-if="showDeleteModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
+      <div v-if="showDeleteModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
         <Transition name="scale">
-          <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center">
-            <div class="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
-              <AlertTriangle class="text-red-500" :size="28" />
+          <div class="bg-white rounded-3xl shadow-2xl p-6 sm:p-8 max-w-sm w-full text-center">
+            <div class="w-14 h-14 sm:w-16 sm:h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
+              <AlertTriangle class="text-red-500" :size="26" />
             </div>
-            <h2 class="text-xl font-black text-gray-800 mb-2">Delete Station</h2>
+            <h2 class="text-lg sm:text-xl font-black text-gray-800 mb-2">Delete Station</h2>
             <p class="text-sm text-slate-500 mb-6">
               Are you sure you want to delete
               <span class="font-bold text-gray-700">{{ deletingName }}</span>?
@@ -363,22 +354,23 @@ onMounted(() => fetchUsers())
 
     <!-- Create User Modal -->
     <Transition name="fade">
-      <div v-if="showCreateModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
-        <Transition name="scale">
-          <div class="relative w-full max-w-md bg-white rounded-3xl shadow-2xl overflow-hidden">
+      <div v-if="showCreateModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-end sm:items-center justify-center sm:p-6">
+        <Transition name="slide-up">
+          <div class="relative w-full sm:max-w-md bg-white rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[95dvh] flex flex-col">
 
-            <div class="bg-green-600 px-8 py-6 text-white flex items-center justify-between">
+            <div class="bg-green-600 px-6 sm:px-8 py-5 sm:py-6 text-white flex items-center justify-between shrink-0">
               <div>
-                <h2 class="text-xl font-black">Create New User</h2>
-                <p class="text-green-100 text-sm mt-1">Register a new water station account</p>
+                <h2 class="text-lg sm:text-xl font-black">Create New User</h2>
+                <p class="text-green-100 text-xs sm:text-sm mt-0.5">Register a new water station account</p>
               </div>
               <button @click="closeModal"
-                class="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center cursor-pointer transition">
+                class="w-9 h-9 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center cursor-pointer transition shrink-0">
                 <X :size="18" />
               </button>
             </div>
 
-            <div class="p-8">
+            <!-- Scrollable body -->
+            <div class="p-6 sm:p-8 overflow-y-auto">
               <div v-if="createError" class="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm">
                 {{ createError }}
               </div>
@@ -458,4 +450,9 @@ onMounted(() => fetchUsers())
 .fade-enter-from, .fade-leave-to { opacity: 0; }
 .scale-enter-active, .scale-leave-active { transition: all 0.25s ease; }
 .scale-enter-from, .scale-leave-to { opacity: 0; transform: scale(0.95); }
+.slide-up-enter-active, .slide-up-leave-active { transition: all 0.3s ease; }
+.slide-up-enter-from, .slide-up-leave-to { opacity: 0; transform: translateY(100%); }
+@media (min-width: 640px) {
+  .slide-up-enter-from, .slide-up-leave-to { transform: scale(0.95); }
+}
 </style>
