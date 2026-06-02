@@ -42,12 +42,46 @@ const newLocation = ref('')
 const newPassword = ref('')
 const showPassword = ref(false)
 
+// ==================== PLAN CONFIG ====================
+const PLAN_CONFIG = {
+  basic:    { total: 10000,  minDown: 2000,  maxMonths: 12,  label: 'Basic',    color: 'blue' },
+  standard: { total: 15000,  minDown: 5000,  maxMonths: 12,  label: 'Standard', color: 'green' },
+  premium:  { total: 80000,  minDown: 30000, maxMonths: 24,  label: 'Premium',  color: 'violet' },
+}
+
+const newPlan = ref<'basic' | 'standard' | 'premium'>('basic')
+const newDownpayment = ref<number | null>(null)
+const newPaymentMonths = ref(6)
+
+const selectedPlanConfig = computed(() => PLAN_CONFIG[newPlan.value])
+
+const remainingBalance = computed(() => {
+  if (!newDownpayment.value) return selectedPlanConfig.value.total
+  return Math.max(0, selectedPlanConfig.value.total - newDownpayment.value)
+})
+
+const monthlyDue = computed(() => {
+  if (remainingBalance.value <= 0) return 0
+  return Math.ceil(remainingBalance.value / newPaymentMonths.value)
+})
+
+const downpaymentError = computed(() => {
+  if (!newDownpayment.value) return ''
+  if (newDownpayment.value < selectedPlanConfig.value.minDown) {
+    return `Minimum downpayment is ₱${selectedPlanConfig.value.minDown.toLocaleString()}`
+  }
+  return ''
+})
+
 const resetForm = () => {
   newFullName.value = ''
   newStationName.value = ''
   newEmail.value = ''
   newPassword.value = ''
   newLocation.value = ''
+  newPlan.value = 'basic'
+  newDownpayment.value = null
+  newPaymentMonths.value = 6
   createError.value = ''
   createSuccess.value = ''
   showPassword.value = false
@@ -104,11 +138,12 @@ const createUser = async () => {
   createSuccess.value = ''
 
   const today = new Date()
-  const nextPayment = new Date()
+  const subscriptionStart = today.toLocaleDateString('en-CA')
+  const nextPayment = new Date(today) // clone today
   nextPayment.setMonth(nextPayment.getMonth() + 1)
+  const nextPaymentDate = nextPayment.toLocaleDateString('en-CA')
 
   try {
-    // Use server route — does NOT replace admin session
     await $fetch('/api/create-user', {
       method: 'POST',
       body: {
@@ -117,8 +152,11 @@ const createUser = async () => {
         fullName: newFullName.value,
         stationName: newStationName.value,
         location: newLocation.value,
-        subscriptionStart: today.toISOString().split('T')[0],
-        nextPaymentDate: nextPayment.toISOString().split('T')[0],
+        subscriptionStart: subscriptionStart,   // correct local date
+        nextPaymentDate: nextPaymentDate,   
+        plan: newPlan.value,
+        downpayment: newDownpayment.value,
+        paymentMonths: newPaymentMonths.value,
       }
     })
 
@@ -129,7 +167,6 @@ const createUser = async () => {
       await fetchUsers()
       closeModal()
     }, 1500)
-
   } catch (err: any) {
     createError.value = err.data?.message || err.message || 'Failed to create user'
     creating.value = false
@@ -180,6 +217,38 @@ const cancelDelete = () => {
   deletingName.value = ''
 }
 
+// ==================== ADMIN: MARK PAYMENT PAID (Step 6) ====================
+const markPaymentPaid = async (paymentId: string, subscriptionId: string) => {
+  // Fetch the amount due for this payment
+  const { data: paymentData } = await (client.from('subscription_payments') as any)
+    .select('amount_due')
+    .eq('id', paymentId)
+    .single()
+
+  const amountDue = paymentData?.amount_due
+
+  // Update payment as paid
+  await (client.from('subscription_payments') as any)
+    .update({
+      status: 'paid',
+      amount_paid: amountDue,
+      paid_at: new Date().toISOString(),
+    })
+    .eq('id', paymentId)
+
+  // Check if all payments are now paid
+  const { data: remainingUnpaid } = await (client.from('subscription_payments') as any)
+    .select('id')
+    .eq('subscription_id', subscriptionId)
+    .neq('status', 'paid')   // any not paid
+
+  if (!remainingUnpaid || remainingUnpaid.length === 0) {
+    await (client.from('subscriptions') as any)
+      .update({ status: 'completed' })
+      .eq('id', subscriptionId)
+  }
+}
+
 onMounted(() => fetchUsers())
 </script>
 
@@ -214,7 +283,7 @@ onMounted(() => fetchUsers())
         No stations registered yet.
       </div>
 
-      <!-- Cards — 1 col on mobile, 2 on tablet, 3 on desktop -->
+      <!-- Cards -->
       <div v-else class="mt-5 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
         <div
           v-for="user in users"
@@ -256,8 +325,9 @@ onMounted(() => fetchUsers())
             </div>
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs text-slate-500 shrink-0">Email</span>
-              <span class="text-sm text-slate-700 truncate max-w-[160px] sm:max-w-40 text-right">{{ user.email }}</span>
+              <span class="text-sm text-slate-700 truncate max-w-40 sm:max-w-40 text-right">{{ user.email }}</span>
             </div>
+            
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs text-slate-500 shrink-0">Status</span>
               <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs sm:text-sm font-semibold">
@@ -379,12 +449,14 @@ onMounted(() => fetchUsers())
               </div>
 
               <div class="space-y-4">
+                <!-- Full Name -->
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-2">Full Name</label>
                   <input v-model="newFullName" type="text" placeholder="Enter full name"
                     class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm">
                 </div>
 
+                <!-- Water Station Name -->
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-2">
                     Water Station Name <span class="text-red-400">*</span>
@@ -393,6 +465,7 @@ onMounted(() => fetchUsers())
                     class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm">
                 </div>
 
+                <!-- Station Location -->
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-2">
                     Station Location <span class="text-red-400">*</span>
@@ -401,6 +474,7 @@ onMounted(() => fetchUsers())
                     class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm">
                 </div>
 
+                <!-- Email Address -->
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-2">
                     Email Address <span class="text-red-400">*</span>
@@ -409,6 +483,97 @@ onMounted(() => fetchUsers())
                     class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm">
                 </div>
 
+                <!-- Plan Selection -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-2">
+                    Plan <span class="text-red-400">*</span>
+                  </label>
+                  <div class="grid grid-cols-3 gap-2">
+                    <button
+                      v-for="(config, key) in PLAN_CONFIG" :key="key"
+                      type="button"
+                      @click="newPlan = key as any; newDownpayment = null"
+                      :class="[
+                        'py-3 px-2 rounded-2xl border-2 text-xs font-bold transition cursor-pointer text-center',
+                        newPlan === key
+                          ? 'bg-green-600 text-white border-green-600'
+                          : 'bg-white text-gray-600 border-gray-200 hover:bg-gray-50'
+                      ]"
+                    >
+                      <p>{{ config.label }}</p>
+                      <p class="font-normal opacity-70 mt-0.5">₱{{ config.total.toLocaleString() }}</p>
+                    </button>
+                  </div>
+                </div>
+
+                <!-- Plan Details -->
+                <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-xs space-y-1.5">
+                  <div class="flex justify-between">
+                    <span class="text-slate-500">Total Price</span>
+                    <span class="font-bold text-slate-700">₱{{ selectedPlanConfig.total.toLocaleString() }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-slate-500">Min. Downpayment</span>
+                    <span class="font-bold text-slate-700">₱{{ selectedPlanConfig.minDown.toLocaleString() }}</span>
+                  </div>
+                  <div class="flex justify-between">
+                    <span class="text-slate-500">Max Payment Period</span>
+                    <span class="font-bold text-slate-700">{{ selectedPlanConfig.maxMonths }} months</span>
+                  </div>
+                </div>
+
+                <!-- Downpayment -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-2">
+                    Downpayment <span class="text-red-400">*</span>
+                  </label>
+                  <div class="relative">
+                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">₱</span>
+                    <input
+                      v-model.number="newDownpayment"
+                      type="number"
+                      :min="selectedPlanConfig.minDown"
+                      :max="selectedPlanConfig.total"
+                      :placeholder="`Min ₱${selectedPlanConfig.minDown.toLocaleString()}`"
+                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 pl-8 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                    >
+                  </div>
+                  <p v-if="downpaymentError" class="text-red-500 text-xs mt-1">{{ downpaymentError }}</p>
+                </div>
+
+                <!-- Payment Months -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-2">Payment Period</label>
+                  <select
+                    v-model.number="newPaymentMonths"
+                    class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  >
+                    <option v-for="m in Array.from({length: selectedPlanConfig.maxMonths}, (_, i) => i + 1)" :key="m" :value="m">
+                      {{ m }} month{{ m > 1 ? 's' : '' }}
+                    </option>
+                  </select>
+                </div>
+
+                <!-- Payment Preview -->
+                <div v-if="newDownpayment && !downpaymentError" class="bg-green-50 rounded-2xl p-4 border border-green-100">
+                  <p class="text-xs text-green-700 font-semibold mb-2">Payment Summary</p>
+                  <div class="space-y-1.5 text-xs">
+                    <div class="flex justify-between">
+                      <span class="text-slate-500">Downpayment</span>
+                      <span class="font-bold text-green-600">₱{{ newDownpayment.toLocaleString() }}</span>
+                    </div>
+                    <div class="flex justify-between">
+                      <span class="text-slate-500">Remaining Balance</span>
+                      <span class="font-bold text-slate-700">₱{{ remainingBalance.toLocaleString() }}</span>
+                    </div>
+                    <div class="flex justify-between border-t border-green-100 pt-1.5">
+                      <span class="text-slate-500">Monthly Due ({{ newPaymentMonths }}mo)</span>
+                      <span class="font-bold text-slate-700">₱{{ monthlyDue.toLocaleString() }}/mo</span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Password -->
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-2">
                     Password <span class="text-red-400">*</span>

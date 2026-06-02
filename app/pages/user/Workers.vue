@@ -574,7 +574,7 @@ const savePayroll = async () => {
   computingPayroll.value = false
 }
 
-// ─── FIXED: Open payroll with correct unpaid period ───────────────
+
 const openPayroll = async (workerId: string) => {
   payrollWorkerId.value = workerId
   payrollPreview.value = null
