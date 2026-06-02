@@ -512,7 +512,13 @@ const computePayroll = async () => {
   const overtimeHours = logs?.reduce((s: number, l: WorkLog) => s + Number(l.overtime_hrs), 0) ?? 0
 
   const hourlyRate = worker.rate / worker.regular_hours
-  const gross = (days * worker.rate) + (overtimeHours * hourlyRate * 1.25)
+ 
+  const regularPay = totalHours * hourlyRate
+
+ 
+  const overtimePay = overtimeHours * hourlyRate * 1.25
+
+  const gross = regularPay + overtimePay
 
   const { data: advances } = await (client.from('cash_advances') as any)
     .select('amount')

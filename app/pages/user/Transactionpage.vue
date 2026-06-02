@@ -40,7 +40,7 @@ const fetchTransactions = async () => {
     .select('*')
     .eq('user_id', userId)
 
-  // 🔥 DATE FILTER LOGIC
+  //  DATE FILTER LOGIC
   if (selectedDate.value) {
     const start = `${selectedDate.value}T00:00:00`
     const end = `${selectedDate.value}T23:59:59`
