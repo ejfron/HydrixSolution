@@ -32,7 +32,7 @@ const mainMenu = [
   { name: 'Transactions', path: '/user/Transactionpage', icon: ReceiptText },
   { name: 'Reports', path: '/user/Reports', icon: BarChart3 },
   { name: 'Workers', path: '/user/Workers', icon: Users2  },
-  { name: 'Subscription', path: '/user/Subscription', icon: HandCoins  },
+  { name: 'Subscription', path: '/user/Subscription', icon: HandCoins },
 ]
 
 onMounted(() => fetchProfile())
