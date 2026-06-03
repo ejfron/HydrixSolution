@@ -75,7 +75,6 @@ type DayEntry = {
   isWorkDay: boolean
 }
 
-// ─── Passcode ───────────────────────────────────────────────────
 const {
   isAuthenticated,
   showPasscodeModal,

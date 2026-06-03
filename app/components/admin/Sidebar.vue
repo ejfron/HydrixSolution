@@ -45,14 +45,14 @@ const systemMenu = [
 <template>
   <aside
     :class="[
-      OpenSidebar ? 'w-[270px]' : 'w-[78px]',
+      OpenSidebar ? 'w-67.5' : 'w-19.5',
       'h-screen sticky top-0 shrink-0 bg-green-600 border-r border-white/10 text-white flex flex-col transition-all duration-300 overflow-visible'
     ]"
   >
     <!-- Logo -->
     <div class="h-16 border-b border-white/10 flex items-center px-4 justify-between">
       <div class="flex items-center gap-3 min-w-0">
-        <div class="min-w-[42px] w-[42px] h-[42px] rounded-xl bg-emerald-500 flex items-center justify-center">
+        <div class="min-w-10.5 w-10.5 h-10.5 rounded-xl bg-emerald-500 flex items-center justify-center">
           <Droplets class="w-5 h-5 text-white" />
         </div>
 
@@ -67,7 +67,7 @@ const systemMenu = [
       <button
         @click="OpenSidebarMenu"
         :class="[
-          OpenSidebar ? '' : 'absolute left-[78px] top-3 bg-green-600 border border-white/20 shadow-lg z-50',
+          OpenSidebar ? '' : 'absolute left-19.5 top-3 bg-green-600 border border-white/20 shadow-lg z-50',
           'cursor-pointer p-2 rounded-lg transition'
         ]"
       >

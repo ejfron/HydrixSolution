@@ -1,7 +1,7 @@
 <script setup lang="ts">
 definePageMeta({ middleware: ['auth'] })
 import { useSupabaseClient } from '#imports'
-import { Plus, X, CheckCircle, Trash2, ImagePlus, Droplets, ShoppingCart, Users } from '@lucide/vue'
+import { Plus, X, CheckCircle, Trash2, ImagePlus, Droplets, ShoppingCart, Users, Bike } from '@lucide/vue'
 import Navbar from '~/components/user/Navbar.vue'
 import Sidebar from '~/components/user/Sidebar.vue'
 import SalesStats from '~/components/user/SalesStats.vue'
@@ -21,6 +21,15 @@ type GallonType = {
   image_url: string | null
   is_active: boolean
 }
+type Rider = {
+  id: string
+  name: string
+  phone: string | null
+}
+
+const riders = ref<Rider[]>([])
+const selectedRiderId = ref<string | null>(null)
+const selectedRiderName = ref('')
 
 type TransactionType = 'regular' | 'reseller'
 
@@ -51,8 +60,8 @@ const selectedType = ref<TransactionType | null>(null)
 const resellerQty = ref<number | null>(null)
 const resellerPrice = ref<number | null>(null)
 
-// Regular quantity input  // <-- NEW
-const regularQty = ref<number>(1)  // <-- NEW
+// Regular quantity input (NEW)
+const regularQty = ref<number>(1)
 
 // Status
 const loading = ref(false)
@@ -66,11 +75,26 @@ const resellerTotal = computed(() => {
   return resellerQty.value * resellerPrice.value
 })
 
-// Total for regular dispense  // <-- NEW
-const regularTotal = computed(() => {   // <-- NEW
+// Total for regular dispense (NEW)
+const regularTotal = computed(() => {
   if (!selectedGallon.value) return 0
   return (regularQty.value || 1) * selectedGallon.value.price
 })
+
+// ─── Fetch riders ──────────────────────────────────────────────
+const fetchRiders = async () => {
+  const { data: { session } } = await client.auth.getSession()
+  const userId = user.value?.id ?? session?.user?.id
+  if (!userId) return
+
+  const { data } = await (client.from('delivery_riders') as any)
+    .select('id, name, phone')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: true })
+
+  if (data) riders.value = data
+}
 
 // ─── Fetch gallon types ─────────────────────────────────────────
 const fetchGallonTypes = async () => {
@@ -158,7 +182,7 @@ const createGallonType = async () => {
     return
   }
 
-  // ─── Duplicate check ──────────────────────────────────────
+  // Duplicate check
   const duplicate = gallonTypes.value.some(
     g =>
       g.name.toLowerCase() === newName.value.toLowerCase() &&
@@ -219,14 +243,16 @@ const deleteGallonType = async (id: string) => {
   deletingId.value = null
 }
 
-// ─── Open dispense flow ─────────────────────────────────────────
+// ─── Open dispense (reset state) ───────────────────────────────
 const openDispense = (gallon: GallonType) => {
   if (isExpired.value) return
   selectedGallon.value = gallon
   selectedType.value = null
+  selectedRiderId.value = null
+  selectedRiderName.value = ''
   resellerQty.value = null
   resellerPrice.value = null
-  regularQty.value = 1   // <-- NEW: reset to 1
+  regularQty.value = 1                      // NEW: reset regular quantity
   errorMsg.value = ''
   successMsg.value = ''
   showTypeModal.value = true
@@ -245,17 +271,24 @@ const closeDispenseModal = () => {
   selectedType.value = null
   resellerQty.value = null
   resellerPrice.value = null
-  regularQty.value = 1   // <-- NEW
+  regularQty.value = 1                      // NEW
   errorMsg.value = ''
 }
 
-// ─── Dispense ───────────────────────────────────────────────────
+// ─── Dispense transaction ───────────────────────────────────────
 const dispense = async () => {
   if (!selectedGallon.value || !selectedType.value) return
 
+  // Validation
   if (selectedType.value === 'reseller') {
     if (!resellerQty.value || !resellerPrice.value) {
       errorMsg.value = 'Please fill in quantity and price.'
+      return
+    }
+  } else {
+    // Regular mode validation
+    if (!regularQty.value || regularQty.value < 1) {
+      errorMsg.value = 'Please enter a valid quantity (minimum 1).'
       return
     }
   }
@@ -268,21 +301,23 @@ const dispense = async () => {
   errorMsg.value = ''
 
   const isReseller = selectedType.value === 'reseller'
-  const qty = isReseller ? resellerQty.value : regularQty.value   // <-- NEW: use regularQty
-  const pricePerPiece = isReseller ? resellerPrice.value : selectedGallon.value.price
-  const totalAmount = isReseller ? resellerTotal.value : regularTotal.value  // <-- NEW
+  const quantity = isReseller ? resellerQty.value! : regularQty.value
+  const pricePerPiece = isReseller ? resellerPrice.value! : selectedGallon.value.price
+  const totalAmount = isReseller ? resellerTotal.value : regularTotal.value
 
   const { error } = await client.from('transactions').insert([{
     user_id: userId,
-    gallon_type: selectedGallon.value.name,           // now allowed after SQL fix
+    gallon_type: selectedGallon.value.name,
     gallon_type_id: selectedGallon.value.id,
-    quantity: qty,                                    // will be >1 for regular bulk
+    quantity: quantity,
     price_per_piece: pricePerPiece,
     total_amount: totalAmount,
     status: 'completed',
     transaction_type: selectedType.value,
     reseller_qty: isReseller ? resellerQty.value : null,
     reseller_price: isReseller ? resellerPrice.value : null,
+    rider_id: selectedRiderId.value || null,
+    rider_name: selectedRiderName.value || null,
   }] as any)
 
   if (error) {
@@ -297,10 +332,12 @@ const dispense = async () => {
   await fetchSales()
 }
 
+// ─── Lifecycle ──────────────────────────────────────────────────
 onMounted(async () => {
   await checkSubscription()
   await fetchGallonTypes()
   await fetchSales()
+  await fetchRiders()
 })
 </script>
 
@@ -400,52 +437,40 @@ onMounted(async () => {
                 </button>
               </div>
 
-              <div class="p-6">
+              <div class="p-6 space-y-4">
 
-                <!-- Regular summary + quantity input -->
-                <div v-if="selectedType === 'regular'" class="mb-6 space-y-4">
-                  <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                    <div class="flex items-center gap-3 mb-3">
-                      <div class="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center overflow-hidden shrink-0">
-                        <img v-if="selectedGallon?.image_url" :src="selectedGallon.image_url" class="w-full h-full object-cover" />
-                        <Droplets v-else :size="20" class="text-green-600" />
-                      </div>
-                      <div>
-                        <p class="font-bold text-slate-800">{{ selectedGallon?.name }}</p>
-                        <p class="text-xs text-slate-400">{{ selectedGallon?.size }} {{ selectedGallon?.unit }}</p>
-                      </div>
+                <!-- Regular mode with quantity input (NEW) -->
+                <div v-if="selectedType === 'regular'" class="bg-slate-50 rounded-2xl p-4 border border-slate-100">
+                  <div class="flex items-center gap-3 mb-4">
+                    <div class="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center overflow-hidden shrink-0">
+                      <img v-if="selectedGallon?.image_url" :src="selectedGallon.image_url" class="w-full h-full object-cover" />
+                      <Droplets v-else :size="20" class="text-green-600" />
                     </div>
-                    <div class="flex items-center justify-between pt-3 border-t border-slate-200">
-                      <span class="text-sm text-slate-500">Price per piece</span>
-                      <span class="font-black text-green-600 text-lg">₱{{ selectedGallon?.price.toFixed(2) }}</span>
+                    <div>
+                      <p class="font-bold text-slate-800">{{ selectedGallon?.name }}</p>
+                      <p class="text-xs text-slate-400">{{ selectedGallon?.size }} {{ selectedGallon?.unit }}</p>
                     </div>
                   </div>
 
-                  <!-- Quantity input for regular -->
-                  <div>
-                    <label class="block text-sm font-semibold text-gray-700 mb-2">
-                      Number of Gallons
-                    </label>
-                    <input
-                      v-model.number="regularQty"
-                      type="number"
-                      min="1"
-                      placeholder="e.g. 3"
-                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-                    >
-                  </div>
-
-                  <!-- Regular total preview -->
-                  <div v-if="regularQty" class="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                    <div class="flex items-center justify-between text-sm">
-                      <span class="text-slate-500">{{ regularQty }} × ₱{{ selectedGallon?.price }}</span>
+                  <div class="space-y-3">
+                    <div>
+                      <label class="block text-sm font-semibold text-gray-700 mb-2">Number of Gallons</label>
+                      <input
+                        v-model.number="regularQty"
+                        type="number"
+                        min="1"
+                        class="w-full bg-white border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                      />
+                    </div>
+                    <div class="flex items-center justify-between pt-2 border-t border-slate-200">
+                      <span class="text-sm text-slate-500">{{ regularQty }} x ₱{{ selectedGallon?.price }}</span>
                       <span class="font-black text-green-600 text-lg">₱{{ regularTotal.toFixed(2) }}</span>
                     </div>
                   </div>
                 </div>
 
                 <!-- Reseller form (unchanged) -->
-                <div v-else class="space-y-4 mb-6">
+                <div v-else class="space-y-3">
                   <div class="bg-violet-50 rounded-2xl p-4 border border-violet-100">
                     <p class="text-xs font-semibold text-violet-600 mb-1">{{ selectedGallon?.name }}</p>
                     <p class="text-xs text-slate-400">Regular price: ₱{{ selectedGallon?.price }}</p>
@@ -455,13 +480,8 @@ onMounted(async () => {
                     <label class="block text-sm font-semibold text-gray-700 mb-2">
                       Number of Gallons <span class="text-red-400">*</span>
                     </label>
-                    <input
-                      v-model.number="resellerQty"
-                      type="number"
-                      min="1"
-                      placeholder="e.g. 12"
-                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm"
-                    >
+                    <input v-model.number="resellerQty" type="number" min="1" placeholder="e.g. 12"
+                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm">
                   </div>
 
                   <div>
@@ -470,17 +490,11 @@ onMounted(async () => {
                     </label>
                     <div class="relative">
                       <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">₱</span>
-                      <input
-                        v-model.number="resellerPrice"
-                        type="number"
-                        min="1"
-                        placeholder="e.g. 20"
-                        class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 pl-8 text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm"
-                      >
+                      <input v-model.number="resellerPrice" type="number" min="1" placeholder="e.g. 20"
+                        class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 pl-8 text-gray-700 focus:outline-none focus:ring-2 focus:ring-violet-500 text-sm">
                     </div>
                   </div>
 
-                  <!-- Total preview -->
                   <div v-if="resellerQty && resellerPrice" class="bg-slate-50 rounded-2xl p-4 border border-slate-100">
                     <div class="flex items-center justify-between text-sm">
                       <span class="text-slate-500">{{ resellerQty }} × ₱{{ resellerPrice }}</span>
@@ -489,8 +503,63 @@ onMounted(async () => {
                   </div>
                 </div>
 
+                <!-- Rider Selector (unchanged) -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                    <Bike :size="14" class="text-slate-400" />
+                    Delivery Rider <span class="text-slate-400 font-normal text-xs">(optional)</span>
+                  </label>
+
+                  <div v-if="riders.length === 0" class="px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-400 text-xs">
+                    No riders added yet. Go to
+                    <NuxtLink to="/user/Riders" class="text-green-600 font-semibold underline">Riders page</NuxtLink>
+                    to add riders.
+                  </div>
+
+                  <div v-else class="grid grid-cols-1 gap-2">
+                    <!-- No rider option -->
+                    <button
+                      @click="selectedRiderId = null; selectedRiderName = ''"
+                      :class="[
+                        'flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition cursor-pointer text-left',
+                        !selectedRiderId
+                          ? 'border-slate-400 bg-slate-50'
+                          : 'border-slate-200 bg-white hover:border-slate-300'
+                      ]"
+                    >
+                      <div :class="['w-8 h-8 rounded-xl flex items-center justify-center shrink-0', !selectedRiderId ? 'bg-slate-500' : 'bg-slate-100']">
+                        <X :size="14" :class="!selectedRiderId ? 'text-white' : 'text-slate-400'" />
+                      </div>
+                      <span class="text-sm font-medium text-slate-600">No assigned rider - Walk in</span>
+                    </button>
+
+                    <!-- Rider options -->
+                    <button
+                      v-for="rider in riders"
+                      :key="rider.id"
+                      @click="selectedRiderId = rider.id; selectedRiderName = rider.name"
+                      :class="[
+                        'flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition cursor-pointer text-left',
+                        selectedRiderId === rider.id
+                          ? 'border-green-500 bg-green-50'
+                          : 'border-slate-200 bg-white hover:border-green-300 hover:bg-green-50/50'
+                      ]"
+                    >
+                      <div :class="['w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black shrink-0',
+                        selectedRiderId === rider.id ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700']">
+                        {{ rider.name.charAt(0).toUpperCase() }}
+                      </div>
+                      <div class="flex-1 min-w-0">
+                        <p class="text-sm font-semibold text-slate-800">{{ rider.name }}</p>
+                        <p v-if="rider.phone" class="text-xs text-slate-400 truncate">{{ rider.phone }}</p>
+                      </div>
+                      <CheckCircle v-if="selectedRiderId === rider.id" :size="16" class="text-green-500 shrink-0" />
+                    </button>
+                  </div>
+                </div>
+
                 <!-- Error -->
-                <div v-if="errorMsg" class="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm">
+                <div v-if="errorMsg" class="px-4 py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm">
                   {{ errorMsg }}
                 </div>
 
@@ -500,12 +569,10 @@ onMounted(async () => {
                   :disabled="loading"
                   :class="[
                     'w-full py-4 rounded-2xl font-black text-sm text-white transition cursor-pointer disabled:opacity-50',
-                    selectedType === 'reseller'
-                      ? 'bg-violet-600 hover:bg-violet-700'
-                      : 'bg-green-600 hover:bg-green-700'
+                    selectedType === 'reseller' ? 'bg-violet-600 hover:bg-violet-700' : 'bg-green-600 hover:bg-green-700'
                   ]"
                 >
-                  {{ loading ? 'Recording...' : `Confirm Dispense` }}
+                  {{ loading ? 'Recording...' : `Confirm Dispense${selectedRiderName ? ' — ' + selectedRiderName : ''}` }}
                 </button>
               </div>
             </div>
@@ -514,7 +581,7 @@ onMounted(async () => {
         </div>
       </Transition>
 
-      <!-- ─── Create Gallon Modal ────────────────────────── -->
+      <!-- ─── Create Gallon Modal (unchanged) ────────────────────────── -->
       <Transition name="fade">
         <div v-if="showCreateModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
           <Transition name="scale">
@@ -531,7 +598,6 @@ onMounted(async () => {
               </div>
 
               <div class="p-6 space-y-4">
-
                 <!-- Image Upload -->
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-2">Product Image</label>

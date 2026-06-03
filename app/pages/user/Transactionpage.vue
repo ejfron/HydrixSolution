@@ -1,15 +1,14 @@
 <script setup lang="ts">
 definePageMeta({ middleware: ['auth'] })
 import { useSupabaseClient } from '#imports'
-import { RefreshCw } from '@lucide/vue'
+import { RefreshCw, Bike, LayoutGrid } from '@lucide/vue'
 import Navbar from '~/components/user/Navbar.vue'
 import Sidebar from '~/components/user/Sidebar.vue'
-
 
 const client = useSupabaseClient()
 const user = useSupabaseUser()
 
-const transactions = ref<{
+type Transaction = {
   id: string
   gallon_type: string
   quantity: number
@@ -17,74 +16,89 @@ const transactions = ref<{
   total_amount: number
   status: string
   transaction_type: string
+  reseller_qty: number | null
+  reseller_price: number | null
+  rider_id: string | null
+  rider_name: string | null
   created_at: string
-}[]>([])
+}
 
+type Rider = {
+  id: string
+  name: string
+}
+
+const transactions = ref<Transaction[]>([])
+const riders = ref<Rider[]>([])
 const loading = ref(true)
-// use string for v-model of <input type="date"> which yields YYYY-MM-DD strings
-const selectedDate = ref<string | null>(null)
+const activeTab = ref<string>('all')
 
-const fetchTransactions = async () => {
-  loading.value = true
-
+const getUserId = async () => {
   const { data: { session } } = await client.auth.getSession()
-  const userId = user.value?.id ?? session?.user?.id
+  return user.value?.id ?? session?.user?.id
+}
 
-  if (!userId) {
-    loading.value = false
-    return
-  }
+const fetchAll = async () => {
+  loading.value = true
+  const userId = await getUserId()
+  if (!userId) return
 
-  let query = client
+  // Fetch transactions
+  const { data: txData } = await client
     .from('transactions')
     .select('*')
     .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .returns<Transaction[]>()
 
-  //  DATE FILTER LOGIC
-  if (selectedDate.value) {
-    const start = `${selectedDate.value}T00:00:00`
-    const end = `${selectedDate.value}T23:59:59`
+  if (txData) transactions.value = txData
 
-    query = query
-      .gte('created_at', start)
-      .lte('created_at', end)
-  }
+  // Fetch riders for tabs
+  const { data: riderData } = await (client.from('delivery_riders') as any)
+    .select('id, name')
+    .eq('user_id', userId)
+    .eq('is_active', true)
+    .order('created_at', { ascending: true })
 
-  const { data } = await query.order('created_at', {
-    ascending: false
-  })
+  if (riderData) riders.value = riderData
 
-  transactions.value = data || []
   loading.value = false
 }
 
-const statusColor = (status: string) => {
-  if (status === 'completed') return 'bg-green-100 text-green-700'
-  if (status === 'pending') return 'bg-yellow-100 text-yellow-700'
-  return 'bg-red-100 text-red-700'
+// Filtered transactions based on active tab
+const filteredTransactions = computed(() => {
+  if (activeTab.value === 'all') return transactions.value
+  if (activeTab.value === 'unassigned') return transactions.value.filter(t => !t.rider_id)
+  return transactions.value.filter(t => t.rider_id === activeTab.value)
+})
+
+// Tab totals
+const getTabTotal = (tabId: string) => {
+  const txs = tabId === 'all'
+    ? transactions.value
+    : tabId === 'unassigned'
+      ? transactions.value.filter(t => !t.rider_id)
+      : transactions.value.filter(t => t.rider_id === tabId)
+
+  return txs.reduce((s, t) => s + Number(t.total_amount), 0)
 }
 
-const typeLabel = (type: string) => {
-  if (type === 'reseller') return 'Retailer/Reseller'
-  return 'Regular'
-}
-
-const typeBadgeColor = (type: string) => {
-  if (type === 'reseller') return 'bg-violet-100 text-violet-700'
-  return 'bg-green-100 text-green-700'
+const getTabCount = (tabId: string) => {
+  if (tabId === 'all') return transactions.value.length
+  if (tabId === 'unassigned') return transactions.value.filter(t => !t.rider_id).length
+  return transactions.value.filter(t => t.rider_id === tabId).length
 }
 
 const formatDate = (d: string) =>
-  new Date(d).toLocaleString('en-PH', {
+  new Date(d).toLocaleDateString('en-PH', {
     month: 'short', day: 'numeric', year: 'numeric',
     hour: '2-digit', minute: '2-digit'
   })
 
-watch(selectedDate, () => {
-  fetchTransactions()
-})
+const formatPeso = (n: number) =>
+  `₱${Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2 })}`
 
-onMounted(() => fetchTransactions())
+onMounted(() => fetchAll())
 </script>
 
 <template>
@@ -93,139 +107,174 @@ onMounted(() => fetchTransactions())
     <main class="flex-1 min-w-0">
       <Navbar />
 
-      <div class="p-4 sm:p-6 lg:p-8 space-y-6">
+      <div class="p-4 sm:p-8 space-y-6">
 
-        <div class="flex items-center justify-between">
+        <!-- Header -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
             <h2 class="text-xl sm:text-2xl font-bold text-gray-700">Transactions</h2>
-            <p class="text-slate-500 text-xs sm:text-sm mt-1">All your dispensing transactions</p>
+            <p class="text-slate-500 text-xs sm:text-sm mt-1">All dispense records sorted by rider</p>
           </div>
-
-          <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-
-            
-          <div class="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
-            <input
-              v-model="selectedDate"
-              type="date"
-              class="px-4 py-3 text-gray-700 border border-green-600 rounded-2xl text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
-            />
-
-            <button
-              v-if="selectedDate"
-              @click="selectedDate = null"
-              class="px-4 py-3 border border-red-200 text-red-600 rounded-2xl text-sm font-semibold hover:bg-red-50"
-            >
-              Clear Filter
-            </button>
-          </div>
-
-          <button
-            @click="fetchTransactions"
-            class="flex items-center gap-2 px-4 sm:px-5 py-2.5 sm:py-3 rounded-2xl border border-green-600 text-green-600 hover:bg-green-50 font-semibold text-xs sm:text-sm transition cursor-pointer"
-          >
-            <RefreshCw :size="16" />
+          <button @click="fetchAll"
+            class="flex items-center gap-2 px-4 py-2.5 border border-green-200 text-green-600 hover:bg-green-50 rounded-2xl text-sm font-semibold transition cursor-pointer">
+            <RefreshCw :size="14" />
             Refresh
           </button>
-
-
-          </div>
-
         </div>
 
-        <div class="bg-white rounded-3xl border border-slate-200 overflow-hidden">
+        <!-- Tabs -->
+        <div class="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+          <!-- All tab -->
+          <button
+            @click="activeTab = 'all'"
+            :class="[
+              'flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold whitespace-nowrap transition cursor-pointer shrink-0',
+              activeTab === 'all'
+                ? 'bg-green-600 text-white shadow-sm'
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            ]"
+          >
+            <LayoutGrid :size="14" />
+            All Transactions
+            <span :class="['px-2 py-0.5 rounded-lg text-[11px] font-bold',
+              activeTab === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600']">
+              {{ getTabCount('all') }}
+            </span>
+          </button>
 
-          <!-- Loading state -->
-          <div v-if="loading" class="p-10 text-center text-slate-400 text-sm">
-            Loading transactions...
+          <!-- Rider tabs -->
+          <button
+            v-for="rider in riders"
+            :key="rider.id"
+            @click="activeTab = rider.id"
+            :class="[
+              'flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold whitespace-nowrap transition cursor-pointer shrink-0',
+              activeTab === rider.id
+                ? 'bg-green-600 text-white shadow-sm'
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            ]"
+          >
+            <Bike :size="14" />
+            {{ rider.name }}
+            <span :class="['px-2 py-0.5 rounded-lg text-[11px] font-bold',
+              activeTab === rider.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600']">
+              {{ getTabCount(rider.id) }}
+            </span>
+          </button>
+
+          <!-- Unassigned tab -->
+          <button
+            v-if="transactions.some(t => !t.rider_id)"
+            @click="activeTab = 'unassigned'"
+            :class="[
+              'flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold whitespace-nowrap transition cursor-pointer shrink-0',
+              activeTab === 'unassigned'
+                ? 'bg-slate-600 text-white shadow-sm'
+                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+            ]"
+          >
+            No Rider
+            <span :class="['px-2 py-0.5 rounded-lg text-[11px] font-bold',
+              activeTab === 'unassigned' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600']">
+              {{ getTabCount('unassigned') }}
+            </span>
+          </button>
+        </div>
+
+        <!-- Tab Summary Card -->
+        <div class="bg-white rounded-2xl border border-slate-100 px-6 py-4 flex items-center justify-between">
+          <div>
+            <p class="text-xs text-slate-400">
+              {{ activeTab === 'all' ? 'Total Revenue' :
+                 activeTab === 'unassigned' ? 'Unassigned Revenue' :
+                 `${riders.find(r => r.id === activeTab)?.name}'s Revenue` }}
+            </p>
+            <p class="text-xl font-black text-green-600 mt-0.5">{{ formatPeso(getTabTotal(activeTab)) }}</p>
+          </div>
+          <div class="text-right">
+            <p class="text-xs text-slate-400">Transactions</p>
+            <p class="text-xl font-black text-slate-700 mt-0.5">{{ getTabCount(activeTab) }}</p>
+          </div>
+        </div>
+
+        <!-- Loading -->
+        <div v-if="loading" class="text-center py-16 text-slate-400 text-sm">Loading...</div>
+
+        <!-- Empty -->
+        <div v-else-if="filteredTransactions.length === 0"
+          class="bg-white rounded-3xl border border-dashed border-slate-300 p-12 text-center">
+          <p class="text-slate-400 text-sm">No transactions found for this filter.</p>
+        </div>
+
+        <!-- Table — desktop -->
+        <div v-else class="bg-white rounded-3xl border border-slate-100 overflow-hidden shadow-sm">
+
+          <div class="hidden sm:block overflow-x-auto">
+            <table class="w-full">
+              <thead>
+                <tr class="bg-slate-50 border-b border-slate-100">
+                  <th class="text-left px-6 py-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Gallon Type</th>
+                  <th class="text-left px-6 py-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Type</th>
+                  <th class="text-left px-6 py-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Qty</th>
+                  <th class="text-left px-6 py-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Price</th>
+                  <th class="text-left px-6 py-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Total</th>
+                  <th class="text-left px-6 py-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Rider</th>
+                  <th class="text-left px-6 py-3 text-[11px] font-semibold text-slate-400 uppercase tracking-wide">Date</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-slate-50">
+                <tr v-for="tx in filteredTransactions" :key="tx.id" class="hover:bg-slate-50/50 transition">
+                  <td class="px-6 py-4 text-sm font-medium text-slate-700">{{ tx.gallon_type }}</td>
+                  <td class="px-6 py-4">
+                    <span :class="['px-2.5 py-1 rounded-lg text-[11px] font-semibold',
+                      tx.transaction_type === 'reseller'
+                        ? 'bg-violet-100 text-violet-700'
+                        : 'bg-green-100 text-green-700']">
+                      {{ tx.transaction_type === 'reseller' ? 'Reseller' : 'Regular' }}
+                    </span>
+                  </td>
+                  <td class="px-6 py-4 text-sm text-slate-600">{{ tx.quantity }}</td>
+                  <td class="px-6 py-4 text-sm text-slate-600">{{ formatPeso(tx.price_per_piece) }}</td>
+                  <td class="px-6 py-4 text-sm font-bold text-green-600">{{ formatPeso(tx.total_amount) }}</td>
+                  <td class="px-6 py-4">
+                    <span v-if="tx.rider_name" class="flex items-center gap-1.5 text-xs font-semibold text-slate-700">
+                      <div class="w-6 h-6 rounded-lg bg-green-100 flex items-center justify-center text-green-700 font-black text-[10px]">
+                        {{ tx.rider_name.charAt(0) }}
+                      </div>
+                      {{ tx.rider_name }}
+                    </span>
+                    <span v-else class="text-xs text-slate-300">—</span>
+                  </td>
+                  <td class="px-6 py-4 text-xs text-slate-400">{{ formatDate(tx.created_at) }}</td>
+                </tr>
+              </tbody>
+            </table>
           </div>
 
-          <!-- Empty state -->
-          <div v-else-if="transactions.length === 0" class="p-10 text-center text-slate-400 text-sm">
-            No transactions yet. Go to Dispense to get started!
-          </div>
-
-          <!-- Has transactions: table on lg+, cards on smaller -->
-          <template v-else>
-            <!-- Desktop Table (hidden on mobile) -->
-            <div class="hidden lg:block">
-              <table class="w-full">
-                <thead class="bg-slate-50">
-                  <tr class="text-gray-600 text-xs">
-                    <th class="text-left px-6 py-5">Date & Time</th>
-                    <th class="text-left px-6 py-5">Type</th>
-                    <th class="text-left px-6 py-5">Gallon Type</th>
-                    <th class="text-left px-6 py-5">Qty</th>
-                    <th class="text-left px-6 py-5">Price/pc</th>
-                    <th class="text-left px-6 py-5">Total</th>
-                    <th class="text-left px-6 py-5">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr
-                    v-for="t in transactions"
-                    :key="t.id"
-                    class="border-b border-slate-100 text-gray-700 text-xs hover:bg-slate-50 transition"
-                  >
-                    <td class="px-6 py-4 whitespace-nowrap">{{ formatDate(t.created_at) }}</td>
-                    <td class="px-6 py-4">
-                      <span :class="['px-2 py-1 rounded-full text-xs font-semibold', typeBadgeColor(t.transaction_type)]">
-                        {{ typeLabel(t.transaction_type) }}
-                      </span>
-                    </td>
-                    <td class="px-6 py-4 font-semibold">{{ t.gallon_type }}</td>
-                    <td class="px-6 py-4">{{ t.quantity }} pcs</td>
-                    <td class="px-6 py-4">₱{{ Number(t.price_per_piece).toFixed(2) }}</td>
-                    <td class="px-6 py-4 font-bold text-green-600">₱{{ Number(t.total_amount).toFixed(2) }}</td>
-                    <td class="px-6 py-4">
-                      <span :class="['px-2 py-1 rounded-full text-xs font-semibold', statusColor(t.status)]">
-                        {{ t.status }}
-                      </span>
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-
-            <!-- Mobile Cards (visible only below lg) -->
-            <div class="lg:hidden divide-y divide-slate-100">
-              <div
-                v-for="t in transactions"
-                :key="t.id"
-                class="p-4 sm:p-5 space-y-3"
-              >
-                <div class="flex items-center justify-between">
-                  <span class="text-xs text-slate-400">{{ formatDate(t.created_at) }}</span>
-                  <span :class="['px-2 py-1 rounded-full text-xs font-semibold', statusColor(t.status)]">
-                    {{ t.status }}
-                  </span>
+          <!-- Mobile cards -->
+          <div class="sm:hidden divide-y divide-slate-100">
+            <div v-for="tx in filteredTransactions" :key="tx.id" class="p-4 space-y-2">
+              <div class="flex items-center justify-between">
+                <div>
+                  <p class="text-sm font-bold text-slate-800">{{ tx.gallon_type }}</p>
+                  <p class="text-xs text-slate-400">{{ formatDate(tx.created_at) }}</p>
                 </div>
-
-                <div class="flex items-start gap-3">
-                  <div class="flex-1 min-w-0">
-                    <h3 class="font-semibold text-sm text-gray-800 truncate">{{ t.gallon_type }}</h3>
-                    <div class="flex items-center gap-2 mt-1">
-                      <span :class="['px-2 py-0.5 rounded-full text-[11px] font-semibold', typeBadgeColor(t.transaction_type)]">
-                        {{ typeLabel(t.transaction_type) }}
-                      </span>
-                      <span class="text-xs text-slate-400">{{ t.quantity }} pcs</span>
-                    </div>
-                  </div>
-                  <div class="text-right">
-                    <p class="text-xs text-slate-400">Price/pc</p>
-                    <p class="text-sm font-semibold text-gray-700">₱{{ Number(t.price_per_piece).toFixed(2) }}</p>
-                  </div>
-                </div>
-
-                <div class="flex items-center justify-between pt-2 border-t border-slate-50">
-                  <span class="text-xs font-semibold text-slate-500">Total</span>
-                  <span class="font-bold text-green-600 text-sm">₱{{ Number(t.total_amount).toFixed(2) }}</span>
-                </div>
+                <p class="font-black text-green-600">{{ formatPeso(tx.total_amount) }}</p>
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <span :class="['px-2 py-0.5 rounded-lg text-[11px] font-semibold',
+                  tx.transaction_type === 'reseller' ? 'bg-violet-100 text-violet-700' : 'bg-green-100 text-green-700']">
+                  {{ tx.transaction_type === 'reseller' ? 'Reseller' : 'Regular' }}
+                </span>
+                <span class="text-xs text-slate-500">Qty: {{ tx.quantity }}</span>
+                <span v-if="tx.rider_name" class="flex items-center gap-1 text-xs font-semibold text-slate-600">
+                  <Bike :size="11" /> {{ tx.rider_name }}
+                </span>
               </div>
             </div>
-          </template>
-        </div>
+          </div>
 
+        </div>
       </div>
     </main>
   </div>

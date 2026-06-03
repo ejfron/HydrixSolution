@@ -2,7 +2,7 @@
 import {
   Home, Building2, ReceiptText,
   BarChart3, LogOut, Droplets,
-  PanelLeftClose, PanelLeftOpen, Users2, HandCoins
+  PanelLeftClose, PanelLeftOpen, Users2, HandCoins, Bike
 } from '@lucide/vue'
 import { useRoute } from '#app'
 
@@ -29,6 +29,7 @@ const mainMenu = [
   { name: 'Dashboard', path: '/user', icon: Home },
   { name: 'DispensePage', path: '/user/Dispense', icon: Droplets },
   { name: 'Salespage', path: '/user/Salespage', icon: Building2 },
+  { name: 'Riders',       path: '/user/Riders',          icon: Bike },
   { name: 'Transactions', path: '/user/Transactionpage', icon: ReceiptText },
   { name: 'Reports', path: '/user/Reports', icon: BarChart3 },
   { name: 'Workers', path: '/user/Workers', icon: Users2  },
