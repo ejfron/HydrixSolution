@@ -27,7 +27,7 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-        title: 'Hydrix Solution',
+        title: 'Hydrix Software Solutions',
       
       link: [
         {
