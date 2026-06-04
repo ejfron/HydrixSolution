@@ -3,9 +3,9 @@
 definePageMeta({ middleware: ['auth'] })
 import { useSupabaseClient } from '#imports'
 import { PhilippinePeso, Droplets, TrendingUp, Calendar } from '@lucide/vue'
-import Navbar from '~/components/user/Navbar.vue'
-import Sidebar from '~/components/user/Sidebar.vue'
-import SalesStats from '~/components/user/SalesStats.vue'
+import Navbar from '~/components/userStandard/Navbar.vue'
+import Sidebar from '~/components/userStandard/Sidebar.vue'
+import SalesStats from '~/components/userStandard/SalesStats.vue'
 
 type Transaction = {
   gallon_type: string

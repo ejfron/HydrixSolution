@@ -16,7 +16,7 @@ const OpenSidebarMenu = () => OpenSidebar.value = !OpenSidebar.value
 
 const isActive = (path: string) => {
   if (path === route.path) return true
-  if (path !== '/user' && route.path.startsWith(path + '/')) return true
+  if (path !== '/userBasic' && route.path.startsWith(path + '/')) return true
   return false
 }
 
@@ -26,14 +26,14 @@ const handleLogout = async () => {
 }
 
 const mainMenu = [
-  { name: 'Dashboard', path: '/user', icon: Home },
-  { name: 'DispensePage', path: '/user/Dispense', icon: Droplets },
-  { name: 'Salespage', path: '/user/Salespage', icon: Building2 },
-  { name: 'Riders',       path: '/user/Riders',          icon: Bike },
-  { name: 'Transactions', path: '/user/Transactionpage', icon: ReceiptText },
-  { name: 'Reports', path: '/user/Reports', icon: BarChart3 },
-  { name: 'Workers', path: '/user/Workers', icon: Users2  },
-  { name: 'Subscription', path: '/user/Subscription', icon: HandCoins },
+  { name: 'Dashboard', path: '/userBasic', icon: Home },
+  { name: 'DispensePage', path: '/userBasic/Dispense', icon: Droplets },
+  { name: 'Salespage', path: '/userBasic/Salespage', icon: Building2 },
+  { name: 'Riders',       path: '/userBasic/Riders',          icon: Bike },
+  { name: 'Transactions', path: '/userBasic/Transactionpage', icon: ReceiptText },
+  { name: 'Reports', path: '/userBasic/Reports', icon: BarChart3 },
+  { name: 'Workers', path: '/userBasic/Workers', icon: Users2  },
+  { name: 'Subscription', path: '/userBasic/Subscription', icon: HandCoins },
 ]
 
 onMounted(() => fetchProfile())
@@ -90,12 +90,8 @@ onMounted(() => fetchProfile())
             v-for="item in mainMenu"
             :key="item.path"
             :to="item.path"
-            :class="[
-              isActive(item.path)
-                ? 'bg-white text-green-600'
-                : 'text-gray-100 hover:bg-white/25 hover:text-white',
-              'flex items-center gap-2 md:gap-3 px-2 md:px-3 h-11 rounded-xl transition-all duration-200'
-            ]"
+            exact-active-class="bg-white text-green-600"
+  class="flex items-center gap-2 md:gap-3 px-2 md:px-3 h-11 rounded-xl transition-all duration-200 text-gray-100 hover:bg-white/25 hover:text-white"
           >
             <component :is="item.icon" class="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
             <Transition name="fade">

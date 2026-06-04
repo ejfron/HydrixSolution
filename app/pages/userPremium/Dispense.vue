@@ -2,9 +2,9 @@
 definePageMeta({ middleware: ['auth'] })
 import { useSupabaseClient } from '#imports'
 import { Plus, X, CheckCircle, Trash2, ImagePlus, Droplets, ShoppingCart, Users, Bike } from '@lucide/vue'
-import Navbar from '~/components/user/Navbar.vue'
-import Sidebar from '~/components/user/Sidebar.vue'
-import SalesStats from '~/components/user/SalesStats.vue'
+import Navbar from '~/components/userPremium/Navbar.vue'
+import Sidebar from '~/components/userPremium/Sidebar.vue'
+import SalesStats from '~/components/userPremium/SalesStats.vue'
 import { useSubscription } from '~/composables/useSubscription'
 
 const client = useSupabaseClient()
@@ -505,7 +505,7 @@ onMounted(async () => {
 
                 <!-- Rider Selector (unchanged) -->
                 <div>
-                  <label class="block text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                  <label class="block text-sm font-semibold text-gray-700 mb-2 items-center gap-1.5">
                     <Bike :size="14" class="text-slate-400" />
                     Delivery Rider <span class="text-slate-400 font-normal text-xs">(optional)</span>
                   </label>

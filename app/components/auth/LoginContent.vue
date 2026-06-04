@@ -27,7 +27,6 @@ const handleLogin = async () => {
     return
   }
 
-  // Use getUser() — reliable in production
   const { data: { user } } = await client.auth.getUser()
 
   if (!user) {
@@ -35,16 +34,37 @@ const handleLogin = async () => {
     return
   }
 
+  // Fetch user role from profiles
   const { data: profile } = await client
     .from('profiles')
     .select('role')
     .eq('id', user.id)
     .single<{ role: string }>()
 
+  // If admin, go to admin panel
   if (profile?.role === 'admin') {
     await navigateTo('/admin')
+    loading.value = false
+    return
+  }
+
+  // Fetch the user's active subscription plan
+  const { data: subscription } = await client
+    .from('subscriptions')
+    .select('plan')
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+    .maybeSingle<{ plan: string }>()
+
+  // Determine destination based on plan (default to basic if none)
+  const plan = subscription?.plan || 'basic'
+
+  if (plan === 'premium') {
+    await navigateTo('/userPremium')
+  } else if (plan === 'standard') {
+    await navigateTo('/userStandard')
   } else {
-    await navigateTo('/user')
+    await navigateTo('/userBasic')
   }
 
   loading.value = false
@@ -121,7 +141,7 @@ const handleLogin = async () => {
             </h1>
         </div>
 
-        <div class="bg-white rounded-[32px] shadow-2xl border border-gray-100 p-8">
+        <div class="bg-white rounded-4xl shadow-2xl border border-gray-100 p-8">
           <div class="mb-8">
             <h2 class="text-4xl font-black text-gray-800 mb-2">Welcome Back</h2>
             <p class="text-gray-500">Login to your Hydrix account</p>

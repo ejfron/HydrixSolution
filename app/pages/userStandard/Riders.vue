@@ -2,8 +2,8 @@
 definePageMeta({ middleware: ['auth'] })
 import { useSupabaseClient } from '#imports'
 import { Plus, X, Trash2, User, Phone, CheckCircle, Bike } from '@lucide/vue'
-import Navbar from '~/components/user/Navbar.vue'
-import Sidebar from '~/components/user/Sidebar.vue'
+import Navbar from '~/components/userStandard/Navbar.vue'
+import Sidebar from '~/components/userStandard/Sidebar.vue'
 
 const client = useSupabaseClient()
 const user = useSupabaseUser()

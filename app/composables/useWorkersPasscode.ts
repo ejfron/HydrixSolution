@@ -1,7 +1,9 @@
 // composables/useWorkersPasscode.ts
 import { ref } from 'vue'
 
-export const useWorkersPasscode = () => {
+export const useWorkersPasscode = (plan: 'basic' | 'standard' | 'premium') => {
+  // 🔑 Scoped storage key
+  const storageKey = `workers_passcode_${plan}`
   const isAuthenticated = ref(false)
   const showPasscodeModal = ref(false)
   const showSetupModal = ref(false)
@@ -10,7 +12,7 @@ export const useWorkersPasscode = () => {
 
   // Check if passcode exists in localStorage
   const checkPasscodeExists = () => {
-    const savedPasscode = localStorage.getItem('workers_passcode')
+    const savedPasscode = localStorage.getItem(storageKey)
     hasPasscode.value = !!savedPasscode
     return hasPasscode.value
   }
@@ -18,7 +20,7 @@ export const useWorkersPasscode = () => {
   // Set up new passcode
   const setupPasscode = (newPasscode: string): boolean => {
     if (newPasscode.length === 4 && /^\d+$/.test(newPasscode)) {
-      localStorage.setItem('workers_passcode', newPasscode)
+      localStorage.setItem(storageKey, newPasscode)
       hasPasscode.value = true
       return true
     }
@@ -27,11 +29,10 @@ export const useWorkersPasscode = () => {
 
   // Verify entered passcode
   const verifyPasscode = (enteredPasscode: string): boolean => {
-    const savedPasscode = localStorage.getItem('workers_passcode')
+    const savedPasscode = localStorage.getItem(storageKey)
     if (enteredPasscode === savedPasscode) {
       isAuthenticated.value = true
       showPasscodeModal.value = false
-      // Don't store in sessionStorage anymore - we want to require passcode every time
       return true
     }
     return false
@@ -44,23 +45,22 @@ export const useWorkersPasscode = () => {
 
   // Change existing passcode
   const changePasscode = (oldPasscode: string, newPasscode: string): boolean => {
-    const savedPasscode = localStorage.getItem('workers_passcode')
+    const savedPasscode = localStorage.getItem(storageKey)
     if (oldPasscode === savedPasscode && newPasscode.length === 4 && /^\d+$/.test(newPasscode)) {
-      localStorage.setItem('workers_passcode', newPasscode)
+      localStorage.setItem(storageKey, newPasscode)
       return true
     }
     return false
   }
 
-  // Reset passcode (forgot passcode)
+  // Reset passcode (forgot passcode) – optional, if you want to wipe the key
   const resetPasscode = () => {
-    localStorage.removeItem('workers_passcode')
+    localStorage.removeItem(storageKey)
     hasPasscode.value = false
     isAuthenticated.value = false
   }
 
   const checkSession = () => {
-    // Always start with not authenticated
     isAuthenticated.value = false
     checkPasscodeExists()
   }
@@ -91,6 +91,6 @@ export const useWorkersPasscode = () => {
     resetPasscode,
     resetAuth,
     checkSession,
-    requireAuth
+    requireAuth,
   }
 }

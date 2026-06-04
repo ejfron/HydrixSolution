@@ -2,8 +2,8 @@
 definePageMeta({ middleware: ['auth'] })
 import { useSupabaseClient } from '#imports'
 import { FileText, TrendingUp, Droplets } from '@lucide/vue'
-import Navbar from '~/components/user/Navbar.vue'
-import Sidebar from '~/components/user/Sidebar.vue'
+import Navbar from '~/components/userBasic/Navbar.vue'
+import Sidebar from '~/components/userBasic/Sidebar.vue'
 
 type Transaction = {
   total_amount: number

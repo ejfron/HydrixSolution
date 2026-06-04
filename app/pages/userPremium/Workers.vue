@@ -10,16 +10,22 @@ import {
   CheckCircle, AlertCircle, Banknote, Save, RefreshCw, Lock,
   Check
 } from '@lucide/vue'
-import Navbar from '~/components/user/Navbar.vue'
-import Sidebar from '~/components/user/Sidebar.vue'
-import PasscodeSetup from '~/components/user/PasscodeSetup.vue'
-import PasscodeVerify from '~/components/user/PasscodeVerify.vue'
-import PasscodeReset from '~/components/user/PasscodeReset.vue'
-import DeleteConfirmModal from '~/components/user/DeleteConfirmModal.vue'
+import Navbar from '~/components/userPremium/Navbar.vue'
+import Sidebar from '~/components/userPremium/Sidebar.vue'
+import PasscodeSetup from '~/components/userPremium/PasscodeSetup.vue'
+import PasscodeVerify from '~/components/userPremium/PasscodeVerify.vue'
+import PasscodeReset from '~/components/userPremium/PasscodeReset.vue'
+import DeleteConfirmModal from '~/components/userPremium/DeleteConfirmModal.vue'
 
 const client = useSupabaseClient()
 const user = useSupabaseUser()
 const route = useRoute()
+
+const plan = computed(() => {
+  if (route.path.startsWith('/userPremium')) return 'premium'
+  if (route.path.startsWith('/userStandard')) return 'standard'
+  return 'basic'  // fallback for /userBasic
+})
 
 // ─── Types ──────────────────────────────────────────────────────
 type Worker = {
@@ -84,7 +90,7 @@ const {
   verifyPasscode,
   resetAuth,
   checkSession
-} = useWorkersPasscode()
+} = useWorkersPasscode(plan.value)
 
 const isUnlocked = ref(false)
 const showResetModal = ref(false)
@@ -95,11 +101,11 @@ const deletingWorker = ref(false)
 onBeforeUnmount(() => resetAuth())
 
 watch(() => route.path, (newPath, oldPath) => {
-  if (oldPath === '/user/Workers' && newPath !== '/user/Workers') resetAuth()
+  if (oldPath === '/userPremium/Workers' && newPath !== '/userPremium/Workers') resetAuth()
 })
 
-onMounted(async () => {
-  checkSession()
+  onMounted(async () => {
+    checkSession()
   await fetchWorkers()
   if (!isAuthenticated.value) {
     if (hasPasscode.value) showPasscodeModal.value = true
@@ -126,7 +132,7 @@ const onVerifySuccess = (passcode: string) => {
   }
 }
 
-const onCancel = () => navigateTo('/user')
+const onCancel = () => navigateTo('/userPremium')
 
 const onForgotPasscode = () => {
   showPasscodeModal.value = false
@@ -137,7 +143,7 @@ const onResetSuccess = (newPasscode: string) => {
   if (setupPasscode(newPasscode)) {
     showResetModal.value = false
     showSuccess('Passcode reset! Please login again.')
-    setTimeout(() => { resetAuth(); navigateTo('/user') }, 1500)
+    setTimeout(() => { resetAuth(); navigateTo('/userPremium') }, 1500)
   }
 }
 
