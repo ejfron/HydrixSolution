@@ -4,7 +4,7 @@
     <div v-if="show" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-md flex items-center justify-center p-6">
       <Transition name="scale">
         <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
-          <div class="bg-gradient-to-r from-green-600 to-emerald-600 px-6 py-5">
+          <div class="bg-linear-to-r from-green-600 to-emerald-600 px-6 py-5">
             <div class="flex items-center justify-center mb-3">
               <div class="w-16 h-16 rounded-full bg-white/20 flex items-center justify-center">
                 <Lock :size="32" class="text-white" />
@@ -25,7 +25,7 @@
                   maxlength="4"
                   pattern="[0-9]{4}"
                   @keyup.enter="handleVerify"
-                  class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm text-center text-2xl tracking-widest"
+                  class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm text-center tracking-widest"
                 />
                 <button 
                   @click="showPasscode = !showPasscode"
