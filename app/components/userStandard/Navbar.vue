@@ -19,7 +19,7 @@ const handleLogout = async () => {
 </script>
 
 <template>
-  <header class="h-[95px] bg-white border-b border-slate-200 px-4 sm:px-10 flex items-center justify-between">
+  <header class="h-23.75 bg-white border-b border-slate-200 px-4 sm:px-10 flex items-center justify-between">
     <!-- Left side: station dashboard title (responsive text) -->
     <div>
       <h1 class="text-base sm:text-xl font-bold text-slate-900">
