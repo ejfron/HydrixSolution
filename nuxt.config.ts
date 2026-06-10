@@ -1,6 +1,33 @@
+declare const process: {
+  env: {
+    NUXT_PUBLIC_SUPABASE_URL?: string,
+    NUXT_PUBLIC_SUPABASE_KEY?: string,
+    SUPABASE_SERVICE_ROLE_KEY?: string,
+    SUPABASE_URL?: string
+  }
+}
+
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: false },
+
+  supabase: {
+    url: process.env.NUXT_PUBLIC_SUPABASE_URL,
+    key: process.env.NUXT_PUBLIC_SUPABASE_KEY,
+    redirect: false,
+  },
+
+  runtimeConfig: {
+
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    supabaseUrl: process.env.SUPABASE_URL,
+
+    // Public (client-side accessible)
+    public: {
+      supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL,
+      supabaseKey: process.env.NUXT_PUBLIC_SUPABASE_KEY,
+    }
+  },
 
   modules: [
     '@nuxt/ui',

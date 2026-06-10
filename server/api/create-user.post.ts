@@ -1,5 +1,3 @@
-declare const process: { env: Record<string, string | undefined> }
-
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
   const {
@@ -8,8 +6,10 @@ export default defineEventHandler(async (event) => {
     plan, downpayment, paymentMonths
   } = body
 
-  const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
-  const supabaseUrl = process.env.SUPABASE_URL
+  // ── Use runtimeConfig instead of process.env ──────────────
+  const config = useRuntimeConfig()
+  const serviceKey = config.supabaseServiceRoleKey
+  const supabaseUrl = config.supabaseUrl
 
   if (!serviceKey || !supabaseUrl) {
     throw createError({ statusCode: 500, message: 'Missing server config' })
@@ -17,7 +17,7 @@ export default defineEventHandler(async (event) => {
 
   const PLANS: Record<string, { total: number; minDown: number; maxMonths: number }> = {
     basic:    { total: 10000,  minDown: 2000,  maxMonths: 12 },
-    standard: { total: 15000,  minDown: 5000,  maxMonths: 12 },
+    standard: { total: 15000,  minDown: 4000,  maxMonths: 12 },
     premium:  { total: 80000,  minDown: 30000, maxMonths: 24 },
   }
 
@@ -33,7 +33,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // Create auth user
+  // ── Create auth user ───────────────────────────────────────
   const createRes = await fetch(`${supabaseUrl}/auth/v1/admin/users`, {
     method: 'POST',
     headers: {
@@ -51,11 +51,17 @@ export default defineEventHandler(async (event) => {
 
   const newUser = await createRes.json()
   if (!createRes.ok) {
-    throw createError({ statusCode: 400, message: newUser.message || 'Failed to create user' })
+    throw createError({
+      statusCode: 400,
+      message: newUser.message || newUser.error_description || 'Failed to create user'
+    })
   }
 
-  // Update profile (PATCH)
-  await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${newUser.id}`, {
+  // ── Wait briefly for trigger to create profile ─────────────
+  await new Promise(resolve => setTimeout(resolve, 1000))
+
+  // ── Update profile ─────────────────────────────────────────
+  const profileRes = await fetch(`${supabaseUrl}/rest/v1/profiles?id=eq.${newUser.id}`, {
     method: 'PATCH',
     headers: {
       'Content-Type': 'application/json',
@@ -68,11 +74,16 @@ export default defineEventHandler(async (event) => {
       subscription_start: subscriptionStart,
       next_payment_date: nextPaymentDate,
       subscription_status: 'active',
-      // Do NOT include 'plan' here unless you add a 'plan' column to the profiles table
+      plan,
     })
   })
 
-  // Create subscription record
+  if (!profileRes.ok) {
+    const profileErr = await profileRes.text()
+    throw createError({ statusCode: 500, message: `Profile update failed: ${profileErr}` })
+  }
+
+  // ── Create subscription ────────────────────────────────────
   const remaining = planConfig.total - downpayment
   const monthlyDue = Math.ceil(remaining / paymentMonths)
 
@@ -101,12 +112,13 @@ export default defineEventHandler(async (event) => {
   const subscriptionId = subData[0]?.id
 
   if (!subscriptionId) {
-    throw createError({ statusCode: 500, message: 'Failed to create subscription' })
+    const subErr = JSON.stringify(subData)
+    throw createError({ statusCode: 500, message: `Failed to create subscription: ${subErr}` })
   }
 
-  // Generate monthly payment schedule
+  // ── Generate monthly payment schedule ──────────────────────
   const paymentSchedule = []
-  const startDate = new Date(subscriptionStart)
+  const startDate = new Date(subscriptionStart + 'T00:00:00')
 
   for (let i = 1; i <= paymentMonths; i++) {
     const dueDate = new Date(startDate)
@@ -122,7 +134,7 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  await fetch(`${supabaseUrl}/rest/v1/subscription_payments`, {
+  const scheduleRes = await fetch(`${supabaseUrl}/rest/v1/subscription_payments`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -132,6 +144,11 @@ export default defineEventHandler(async (event) => {
     },
     body: JSON.stringify(paymentSchedule)
   })
+
+  if (!scheduleRes.ok) {
+    const schedErr = await scheduleRes.text()
+    throw createError({ statusCode: 500, message: `Payment schedule failed: ${schedErr}` })
+  }
 
   return { success: true, userId: newUser.id }
 })
