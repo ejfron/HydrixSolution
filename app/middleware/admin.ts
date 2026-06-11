@@ -3,39 +3,36 @@ import { useSupabaseClient } from '#imports'
 export default defineNuxtRouteMiddleware(async (to) => {
   const client = useSupabaseClient()
 
-  
-  const { data: { user }, error: userError } = await client.auth.getUser()
+  let user = null
+  let attempts = 0
 
-  if (userError || !user) {
+  while (!user && attempts < 3) {
+    const { data } = await client.auth.getUser()
+    user = data.user
+    if (!user) await new Promise(resolve => setTimeout(resolve, 300))
+    attempts++
+  }
+
+  if (!user) {
     return navigateTo('/loginpage')
   }
 
-  const { data: profile } = await client
+  const { data: profile, error } = await client
     .from('profiles')
     .select('role, plan')
     .eq('id', user.id)
-    .single<{ role: string}>()
+    .single<{ role: string; plan: string | null }>()
 
-  if (!profile) {
+  if (error || !profile) {
     return navigateTo('/loginpage')
   }
 
+  // Only admins allowed past this point
   if (profile.role !== 'admin') {
-    // Redirect to correct plan folder
-  const { data: subscription } = await client
-    .from('subscriptions')
-    .select('plan')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .maybeSingle<{ plan: string }>()
-
-    const plan = subscription?.plan || 'basic'
-
     const dest =
-      plan === 'premium'  ? '/userPremium'  :
-      plan === 'standard' ? '/userStandard' :
-                              '/userBasic'
-
-  return navigateTo(dest)
+      profile.plan === 'premium'  ? '/userPremium'  :
+      profile.plan === 'standard' ? '/userStandard' :
+                                    '/userBasic'
+    return navigateTo(dest)
   }
 })

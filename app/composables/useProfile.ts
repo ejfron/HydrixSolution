@@ -4,45 +4,39 @@ export const useProfile = () => {
   const client = useSupabaseClient()
   const user = useSupabaseUser()
 
-  const profile = useState<{
+  // ── Use ref instead of useState to avoid stale cache ──────
+  const profile = ref<{
     full_name: string
     station_name: string
     role: string
     email: string
-  } | null>('user-profile', () => null)
+    plan: string
+  } | null>(null)
 
   const fetchProfile = async () => {
-    // If no user yet, wait for session explicitly
-    if (!user.value?.id) {
-      const { data: { session } } = await client.auth.getSession()
-      if (!session?.user?.id) return
+    let userId: string | undefined
 
-      const { data, error } = await client
-        .from('profiles')
-        .select('full_name, station_name, role, email')
-        .eq('id', session.user.id)
-        .single<{
-          full_name: string
-          station_name: string
-          role: string
-          email: string
-        }>()
-      if (data) profile.value = data
-      return
+    // Try user first, fallback to session
+    if (user.value?.id) {
+      userId = user.value.id
+    } else {
+      const { data: { session } } = await client.auth.getSession()
+      userId = session?.user?.id
     }
 
-    // User is already available
-    const { data, error } = await client
+    if (!userId) return
+
+    const { data } = await client
       .from('profiles')
-      .select('full_name, station_name, role, email')
-      .eq('id', user.value.id)
+      .select('full_name, station_name, role, email, plan')
+      .eq('id', userId)
       .single<{
         full_name: string
         station_name: string
         role: string
         email: string
+        plan: string
       }>()
-
 
     if (data) profile.value = data
   }

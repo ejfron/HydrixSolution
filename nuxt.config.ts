@@ -15,14 +15,17 @@ export default defineNuxtConfig({
     url: process.env.NUXT_PUBLIC_SUPABASE_URL,
     key: process.env.NUXT_PUBLIC_SUPABASE_KEY,
     redirect: false,
+    cookieOptions: {
+      maxAge: 60 * 60 * 8,
+      sameSite: 'lax',
+      secure: false,    // false for localhost
+    },
   },
 
-  runtimeConfig: {
 
+  runtimeConfig: {
     supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
     supabaseUrl: process.env.SUPABASE_URL,
-
-    // Public (client-side accessible)
     public: {
       supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL,
       supabaseKey: process.env.NUXT_PUBLIC_SUPABASE_KEY,

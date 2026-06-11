@@ -10,6 +10,8 @@ onMounted(async () => {
   await new Promise(resolve => setTimeout(resolve, 2000))
   loading.value = false
 })
+
+
 </script>
 
 <template>

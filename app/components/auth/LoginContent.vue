@@ -16,7 +16,7 @@ const handleLogin = async () => {
   loading.value = true
   errorMsg.value = ''
 
-  const { error } = await client.auth.signInWithPassword({
+  const { data, error } = await client.auth.signInWithPassword({
     email: email.value,
     password: password.value,
   })
@@ -27,47 +27,62 @@ const handleLogin = async () => {
     return
   }
 
+  if (!data.session) {
+    errorMsg.value = 'No session returned. Please try again.'
+    loading.value = false
+    return
+  }
+
+  // ── Manually set session to make sure cookie is established ─
+  await client.auth.setSession({
+    access_token: data.session.access_token,
+    refresh_token: data.session.refresh_token,
+  })
+
+  // ── Wait for cookie to be fully written ─────────────────────
+  await new Promise(resolve => setTimeout(resolve, 800))
+
   const { data: { user } } = await client.auth.getUser()
 
   if (!user) {
+    errorMsg.value = 'Session not established. Please try again.'
     loading.value = false
     return
   }
 
-  // Fetch user role from profiles
-  const { data: profile } = await client
+  const { data: profile, error: profileError } = await client
     .from('profiles')
-    .select('role')
+    .select('role, plan')
     .eq('id', user.id)
-    .single<{ role: string }>()
+    .single<{ role: string; plan: string }>()
 
-  // If admin, go to admin panel
-  if (profile?.role === 'admin') {
-    await navigateTo('/admin')
+  if (profileError || !profile) {
+    errorMsg.value = 'Could not load profile. Please try again.'
     loading.value = false
     return
   }
 
-  // Fetch the user's active subscription plan
-  const { data: subscription } = await client
-    .from('subscriptions')
-    .select('plan')
-    .eq('user_id', user.id)
-    .eq('status', 'active')
-    .maybeSingle<{ plan: string }>()
+  
+  let redirectPath = '/userBasic'
 
-  // Determine destination based on plan (default to basic if none)
-  const plan = subscription?.plan || 'basic'
+ 
+if (profile.role === 'admin') {
 
-  if (plan === 'premium') {
-    await navigateTo('/userPremium')
-  } else if (plan === 'standard') {
-    await navigateTo('/userStandard')
+  window.location.href = '/admin'
+} else {
+  // User — redirect based on plan
+  if (profile.plan === 'premium') {
+    window.location.href = '/userPremium'
+  } else if (profile.plan === 'standard') {
+    window.location.href = '/userStandard'
   } else {
-    await navigateTo('/userBasic')
+    window.location.href = '/userBasic'
   }
+}
 
-  loading.value = false
+  // ── Use window.location for hard redirect on Mac ─────────────
+  // This forces a full page reload which re-reads the cookie properly
+  window.location.href = redirectPath
 }
 </script>
 

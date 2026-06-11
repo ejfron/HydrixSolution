@@ -21,21 +21,24 @@ type GallonType = {
   image_url: string | null
   is_active: boolean
 }
+
 type Rider = {
   id: string
   name: string
   phone: string | null
 }
 
-const riders = ref<Rider[]>([])
-const selectedRiderId = ref<string | null>(null)
-const selectedRiderName = ref('')
-
 type TransactionType = 'regular' | 'reseller'
 
 // ─── State ──────────────────────────────────────────────────────
 const gallonTypes = ref<GallonType[]>([])
 const stats = ref({ today: 0, yesterday: 0, thisMonth: 0, thisYear: 0, totalGallons: 0 })
+
+// Riders
+const riders = ref<Rider[]>([])
+const selectedRiderId = ref<string | null>(null)
+const selectedRiderName = ref('')
+const walkInPrice = ref<number | null>(null)
 
 // Create gallon modal
 const showCreateModal = ref(false)
@@ -48,11 +51,12 @@ const newPrice = ref<number | null>(null)
 const newImageFile = ref<File | null>(null)
 const newImagePreview = ref<string | null>(null)
 
+const showDeleteModal = ref(false)
+const gallonToDelete = ref<GallonType | null>(null)
+
 // Dispense modal
 const showDispenseModal = ref(false)
 const selectedGallon = ref<GallonType | null>(null)
-
-// Transaction type modal
 const showTypeModal = ref(false)
 const selectedType = ref<TransactionType | null>(null)
 
@@ -60,7 +64,7 @@ const selectedType = ref<TransactionType | null>(null)
 const resellerQty = ref<number | null>(null)
 const resellerPrice = ref<number | null>(null)
 
-// Regular quantity input (NEW)
+// Regular quantity
 const regularQty = ref<number>(1)
 
 // Status
@@ -70,18 +74,39 @@ const errorMsg = ref('')
 const deletingId = ref<string | null>(null)
 
 // ─── Computed ───────────────────────────────────────────────────
+const isWalkIn = computed(() => selectedRiderId.value === null)
+
+const actualPricePerPiece = computed(() => {
+  if (!selectedGallon.value) return 0
+  if (isWalkIn.value && walkInPrice.value && walkInPrice.value > 0) return walkInPrice.value
+  return selectedGallon.value.price
+})
+
 const resellerTotal = computed(() => {
   if (!resellerQty.value || !resellerPrice.value) return 0
   return resellerQty.value * resellerPrice.value
 })
 
-// Total for regular dispense (NEW)
 const regularTotal = computed(() => {
   if (!selectedGallon.value) return 0
-  return (regularQty.value || 1) * selectedGallon.value.price
+  return (regularQty.value || 1) * actualPricePerPiece.value
 })
 
-// ─── Fetch riders ──────────────────────────────────────────────
+
+const openDeleteModal = (gallon: GallonType) => {
+  gallonToDelete.value = gallon
+  showDeleteModal.value = true
+}
+
+const confirmDelete = async () => {
+  if (!gallonToDelete.value) return
+
+  await deleteGallonType(gallonToDelete.value.id)
+
+  showDeleteModal.value = false
+  gallonToDelete.value = null
+}
+// ─── Fetch riders ───────────────────────────────────────────────
 const fetchRiders = async () => {
   const { data: { session } } = await client.auth.getSession()
   const userId = user.value?.id ?? session?.user?.id
@@ -158,20 +183,11 @@ const handleImageSelect = (e: Event) => {
 
 const uploadImage = async (userId: string): Promise<string | null> => {
   if (!newImageFile.value) return null
-
   const ext = newImageFile.value.name.split('.').pop()
   const path = `${userId}/${Date.now()}.${ext}`
-
-  const { error } = await client.storage
-    .from('gallon-images')
-    .upload(path, newImageFile.value)
-
+  const { error } = await client.storage.from('gallon-images').upload(path, newImageFile.value)
   if (error) return null
-
-  const { data } = client.storage
-    .from('gallon-images')
-    .getPublicUrl(path)
-
+  const { data } = client.storage.from('gallon-images').getPublicUrl(path)
   return data.publicUrl
 }
 
@@ -182,14 +198,10 @@ const createGallonType = async () => {
     return
   }
 
-  // Duplicate check
   const duplicate = gallonTypes.value.some(
-    g =>
-      g.name.toLowerCase() === newName.value.toLowerCase() &&
-      g.size === newSize.value &&
-      g.unit === newUnit.value
+    g => g.name.toLowerCase() === newName.value.toLowerCase() &&
+         g.size === newSize.value && g.unit === newUnit.value
   )
-
   if (duplicate) {
     createError.value = 'A gallon with this name, size and unit already exists.'
     return
@@ -219,7 +231,6 @@ const createGallonType = async () => {
     return
   }
 
-  // Reset form
   newName.value = ''
   newSize.value = null
   newUnit.value = 'gallon'
@@ -228,32 +239,35 @@ const createGallonType = async () => {
   newImagePreview.value = null
   creating.value = false
   showCreateModal.value = false
-
   await fetchGallonTypes()
 }
 
 // ─── Delete gallon type ─────────────────────────────────────────
 const deleteGallonType = async (id: string) => {
   deletingId.value = id
-  await (client.from('gallon_types') as any)
-    .update({ is_active: false })
-    .eq('id', id)
-
+  await (client.from('gallon_types') as any).update({ is_active: false }).eq('id', id)
   gallonTypes.value = gallonTypes.value.filter(g => g.id !== id)
   deletingId.value = null
 }
 
-// ─── Open dispense (reset state) ───────────────────────────────
-const openDispense = (gallon: GallonType) => {
-  if (isExpired.value) return
-  selectedGallon.value = gallon
+// ─── Reset all dispense state ───────────────────────────────────
+const resetDispenseState = () => {
+  selectedGallon.value = null
   selectedType.value = null
   selectedRiderId.value = null
   selectedRiderName.value = ''
   resellerQty.value = null
   resellerPrice.value = null
-  regularQty.value = 1                      // NEW: reset regular quantity
+  regularQty.value = 1
+  walkInPrice.value = null
   errorMsg.value = ''
+}
+
+// ─── Open dispense ──────────────────────────────────────────────
+const openDispense = (gallon: GallonType) => {
+  if (isExpired.value) return
+  resetDispenseState()
+  selectedGallon.value = gallon
   successMsg.value = ''
   showTypeModal.value = true
 }
@@ -267,28 +281,27 @@ const selectType = (type: TransactionType) => {
 const closeDispenseModal = () => {
   showDispenseModal.value = false
   showTypeModal.value = false
-  selectedGallon.value = null
-  selectedType.value = null
-  resellerQty.value = null
-  resellerPrice.value = null
-  regularQty.value = 1                      // NEW
-  errorMsg.value = ''
+  resetDispenseState()
 }
 
-// ─── Dispense transaction ───────────────────────────────────────
+// ─── Dispense ───────────────────────────────────────────────────
 const dispense = async () => {
   if (!selectedGallon.value || !selectedType.value) return
+  errorMsg.value = ''
 
-  // Validation
   if (selectedType.value === 'reseller') {
     if (!resellerQty.value || !resellerPrice.value) {
       errorMsg.value = 'Please fill in quantity and price.'
       return
     }
   } else {
-    // Regular mode validation
     if (!regularQty.value || regularQty.value < 1) {
       errorMsg.value = 'Please enter a valid quantity (minimum 1).'
+      return
+    }
+    // Walk-in requires custom price
+    if (isWalkIn.value && (!walkInPrice.value || walkInPrice.value < 1)) {
+      errorMsg.value = 'Please enter the walk-in price per gallon.'
       return
     }
   }
@@ -298,18 +311,17 @@ const dispense = async () => {
   if (!userId) return
 
   loading.value = true
-  errorMsg.value = ''
 
   const isReseller = selectedType.value === 'reseller'
   const quantity = isReseller ? resellerQty.value! : regularQty.value
-  const pricePerPiece = isReseller ? resellerPrice.value! : selectedGallon.value.price
+  const pricePerPiece = isReseller ? resellerPrice.value! : actualPricePerPiece.value
   const totalAmount = isReseller ? resellerTotal.value : regularTotal.value
 
   const { error } = await client.from('transactions').insert([{
     user_id: userId,
     gallon_type: selectedGallon.value.name,
     gallon_type_id: selectedGallon.value.id,
-    quantity: quantity,
+    quantity,
     price_per_piece: pricePerPiece,
     total_amount: totalAmount,
     status: 'completed',
@@ -326,7 +338,8 @@ const dispense = async () => {
     return
   }
 
-  successMsg.value = `✅ ${isReseller ? 'Reseller' : 'Regular'} dispense recorded! ₱${totalAmount.toFixed(2)}`
+  const label = isReseller ? 'Reseller' : isWalkIn.value ? 'Walk-in' : 'Regular'
+  successMsg.value = `✅ ${label} dispense recorded! ₱${totalAmount.toFixed(2)}`
   loading.value = false
   closeDispenseModal()
   await fetchSales()
@@ -350,7 +363,7 @@ onMounted(async () => {
       <!-- Subscription Expired Modal -->
       <Transition name="fade">
         <div v-if="isExpired" class="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-6">
-          <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center relative">
+          <div class="bg-white rounded-3xl shadow-2xl p-8 max-w-sm w-full text-center">
             <div class="w-16 h-16 rounded-full bg-red-100 flex items-center justify-center mx-auto mb-4">
               <span class="text-3xl">⚠️</span>
             </div>
@@ -378,31 +391,26 @@ onMounted(async () => {
                   <h2 class="text-lg font-black text-white">{{ selectedGallon?.name }}</h2>
                   <p class="text-green-100 text-xs mt-0.5">Select transaction type</p>
                 </div>
-                <button @click="closeDispenseModal" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center cursor-pointer transition">
+                <button @click="closeDispenseModal"
+                  class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center cursor-pointer transition">
                   <X :size="16" class="text-white" />
                 </button>
               </div>
 
               <div class="p-6 space-y-3">
-                <!-- Regular -->
-                <button
-                  @click="selectType('regular')"
-                  class="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 border-slate-200 hover:border-green-400 hover:bg-green-50/50 transition cursor-pointer text-left"
-                >
+                <button @click="selectType('regular')"
+                  class="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 border-slate-200 hover:border-green-400 hover:bg-green-50/50 transition cursor-pointer text-left">
                   <div class="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center shrink-0">
                     <Droplets :size="22" class="text-green-600" />
                   </div>
                   <div>
                     <p class="font-bold text-slate-800">Regular Dispense</p>
-                    <p class="text-xs text-slate-400 mt-0.5">Single or multiple units — ₱{{ selectedGallon?.price }} per piece</p>
+                    <p class="text-xs text-slate-400 mt-0.5">Walk-in or rider — ₱{{ selectedGallon?.price }} per piece</p>
                   </div>
                 </button>
 
-                <!-- Reseller -->
-                <button
-                  @click="selectType('reseller')"
-                  class="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 border-slate-200 hover:border-violet-400 hover:bg-violet-50/50 transition cursor-pointer text-left"
-                >
+                <button @click="selectType('reseller')"
+                  class="w-full flex items-center gap-4 px-5 py-4 rounded-2xl border-2 border-slate-200 hover:border-violet-400 hover:bg-violet-50/50 transition cursor-pointer text-left">
                   <div class="w-12 h-12 rounded-xl bg-violet-100 flex items-center justify-center shrink-0">
                     <Users :size="22" class="text-violet-600" />
                   </div>
@@ -420,41 +428,49 @@ onMounted(async () => {
 
       <!-- ─── Dispense Modal ─────────────────────────────── -->
       <Transition name="fade">
-        <div v-if="showDispenseModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
+        <div v-if="showDispenseModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4">
           <Transition name="scale">
-            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden">
+            <div class="bg-white rounded-3xl shadow-2xl w-full max-w-sm overflow-hidden max-h-[90vh] flex flex-col">
 
               <!-- Header -->
-              <div :class="['px-6 py-5 flex items-center justify-between', selectedType === 'reseller' ? 'bg-violet-600' : 'bg-green-600']">
+              <div :class="['px-6 py-5 flex items-center justify-between shrink-0',
+                selectedType === 'reseller' ? 'bg-violet-600' : 'bg-green-600']">
                 <div>
                   <h2 class="text-lg font-black text-white">
                     {{ selectedType === 'reseller' ? 'Retailer / Reseller' : 'Regular Dispense' }}
                   </h2>
                   <p class="text-white/70 text-xs mt-0.5">{{ selectedGallon?.name }}</p>
                 </div>
-                <button @click="closeDispenseModal" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center cursor-pointer transition">
+                <button @click="closeDispenseModal"
+                  class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center cursor-pointer transition">
                   <X :size="16" class="text-white" />
                 </button>
               </div>
 
-              <div class="p-6 space-y-4">
+              <!-- Scrollable body -->
+              <div class="p-6 space-y-4 overflow-y-auto flex-1">
 
-                <!-- Regular mode with quantity input (NEW) -->
-                <div v-if="selectedType === 'regular'" class="bg-slate-50 rounded-2xl p-4 border border-slate-100">
-                  <div class="flex items-center gap-3 mb-4">
-                    <div class="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center overflow-hidden shrink-0">
-                      <img v-if="selectedGallon?.image_url" :src="selectedGallon.image_url" class="w-full h-full object-cover" />
-                      <Droplets v-else :size="20" class="text-green-600" />
-                    </div>
-                    <div>
-                      <p class="font-bold text-slate-800">{{ selectedGallon?.name }}</p>
-                      <p class="text-xs text-slate-400">{{ selectedGallon?.size }} {{ selectedGallon?.unit }}</p>
-                    </div>
-                  </div>
+                <!-- ─── Regular Mode ─────────────────────── -->
+                <div v-if="selectedType === 'regular'">
 
-                  <div class="space-y-3">
-                    <div>
-                      <label class="block text-sm font-semibold text-gray-700 mb-2">Number of Gallons</label>
+                  <!-- Gallon info card -->
+                  <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100 mb-4">
+                    <div class="flex items-center gap-3 mb-4">
+                      <div class="w-12 h-12 rounded-xl bg-green-100 flex items-center justify-center overflow-hidden shrink-0">
+                        <img v-if="selectedGallon?.image_url" :src="selectedGallon.image_url" class="w-full h-full object-cover" />
+                        <Droplets v-else :size="20" class="text-green-600" />
+                      </div>
+                      <div>
+                        <p class="font-bold text-slate-800">{{ selectedGallon?.name }}</p>
+                        <p class="text-xs text-slate-400">{{ selectedGallon?.size }} {{ selectedGallon?.unit }}</p>
+                      </div>
+                    </div>
+
+                    <!-- Quantity -->
+                    <div class="mb-3">
+                      <label class="block text-sm font-semibold text-gray-700 mb-2">
+                        Number of Gallons
+                      </label>
                       <input
                         v-model.number="regularQty"
                         type="number"
@@ -462,14 +478,47 @@ onMounted(async () => {
                         class="w-full bg-white border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
                       />
                     </div>
-                    <div class="flex items-center justify-between pt-2 border-t border-slate-200">
-                      <span class="text-sm text-slate-500">{{ regularQty }} x ₱{{ selectedGallon?.price }}</span>
-                      <span class="font-black text-green-600 text-lg">₱{{ regularTotal.toFixed(2) }}</span>
+
+                    <!-- Walk-in custom price — shows ONLY when walk-in selected -->
+                    <div v-if="isWalkIn" class="mb-3">
+                      <label class="block text-sm font-semibold text-gray-700 mb-2">
+                        Walk-in Price per Gallon <span class="text-red-400">*</span>
+                      </label>
+                      <div class="relative">
+                        <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">₱</span>
+                        <input
+                          v-model.number="walkInPrice"
+                          type="number"
+                          min="1"
+                          :placeholder="`e.g. ${selectedGallon?.price}`"
+                          class="w-full bg-white border border-green-300 rounded-2xl px-4 py-3 pl-8 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                        />
+                      </div>
+                      <p class="text-xs text-slate-400 mt-1">
+                        Default rider price is ₱{{ selectedGallon?.price }}. Enter custom walk-in price.
+                      </p>
+                    </div>
+
+                    <!-- Rider price info — shows when rider is selected -->
+                    <div v-else class="mb-3 bg-green-50 rounded-xl px-3 py-2 border border-green-100">
+                      <p class="text-xs text-green-700">
+                        Using rider price: <strong>₱{{ selectedGallon?.price }}/gallon</strong>
+                      </p>
+                    </div>
+
+                    <!-- Total preview -->
+                    <div class="flex items-center justify-between pt-3 border-t border-slate-200">
+                      <span class="text-sm text-slate-500">
+                        {{ regularQty }} × ₱{{ actualPricePerPiece.toFixed(2) }}
+                      </span>
+                      <span class="font-black text-green-600 text-lg">
+                        ₱{{ regularTotal.toFixed(2) }}
+                      </span>
                     </div>
                   </div>
                 </div>
 
-                <!-- Reseller form (unchanged) -->
+                <!-- ─── Reseller Mode ────────────────────── -->
                 <div v-else class="space-y-3">
                   <div class="bg-violet-50 rounded-2xl p-4 border border-violet-100">
                     <p class="text-xs font-semibold text-violet-600 mb-1">{{ selectedGallon?.name }}</p>
@@ -503,55 +552,71 @@ onMounted(async () => {
                   </div>
                 </div>
 
-                <!-- Rider Selector (unchanged) -->
+                <!-- ─── Rider Selector ───────────────────── -->
                 <div>
                   <label class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
                     <Bike :size="14" class="text-slate-400" />
-                    Delivery Rider <span class="text-slate-400 font-normal text-xs">(optional)</span>
+                    Delivery Rider
+                    <span class="text-slate-400 font-normal text-xs">(optional)</span>
                   </label>
 
-                  <div v-if="riders.length === 0" class="px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-400 text-xs">
-                    No riders added yet. Go to
-                    <NuxtLink to="/user/Riders" class="text-green-600 font-semibold underline">Riders page</NuxtLink>
-                    to add riders.
+                  <!-- No riders added yet -->
+                  <div v-if="riders.length === 0"
+                    class="px-4 py-3 bg-slate-50 border border-slate-200 rounded-2xl text-slate-400 text-xs">
+                    No riders added yet.
+                    <NuxtLink to="/userBasic/Riders" class="text-green-600 font-semibold underline">
+                      Add riders here
+                    </NuxtLink>
                   </div>
 
-                  <div v-else class="grid grid-cols-1 gap-2">
-                    <!-- No rider option -->
+                  <div v-else class="space-y-2">
+
+                    <!-- Walk-in option -->
                     <button
-                      @click="selectedRiderId = null; selectedRiderName = ''"
+                      @click="selectedRiderId = null; selectedRiderName = ''; walkInPrice = null"
                       :class="[
-                        'flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition cursor-pointer text-left',
+                        'w-full flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition cursor-pointer text-left',
                         !selectedRiderId
-                          ? 'border-slate-400 bg-slate-50'
-                          : 'border-slate-200 bg-white hover:border-slate-300'
+                          ? 'border-green-500 bg-green-50'
+                          : 'border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50'
                       ]"
                     >
-                      <div :class="['w-8 h-8 rounded-xl flex items-center justify-center shrink-0', !selectedRiderId ? 'bg-slate-500' : 'bg-slate-100']">
-                        <X :size="14" :class="!selectedRiderId ? 'text-white' : 'text-slate-400'" />
+                      <div :class="[
+                        'w-8 h-8 rounded-xl flex items-center justify-center text-sm shrink-0',
+                        !selectedRiderId ? 'bg-green-600' : 'bg-slate-100'
+                      ]">
+                        <span>🚶</span>
                       </div>
-                      <span class="text-sm font-medium text-slate-600">No assigned rider - Walk in</span>
+                      <div class="flex-1">
+                        <p class="text-sm font-semibold text-slate-800">Walk-in Customer</p>
+                        <p class="text-xs text-slate-400">Custom price — enter amount above</p>
+                      </div>
+                      <CheckCircle v-if="!selectedRiderId" :size="16" class="text-green-500 shrink-0" />
                     </button>
 
                     <!-- Rider options -->
                     <button
                       v-for="rider in riders"
                       :key="rider.id"
-                      @click="selectedRiderId = rider.id; selectedRiderName = rider.name"
+                      @click="selectedRiderId = rider.id; selectedRiderName = rider.name; walkInPrice = null"
                       :class="[
-                        'flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition cursor-pointer text-left',
+                        'w-full flex items-center gap-3 px-4 py-3 rounded-2xl border-2 transition cursor-pointer text-left',
                         selectedRiderId === rider.id
                           ? 'border-green-500 bg-green-50'
                           : 'border-slate-200 bg-white hover:border-green-300 hover:bg-green-50/50'
                       ]"
                     >
-                      <div :class="['w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black shrink-0',
-                        selectedRiderId === rider.id ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700']">
+                      <div :class="[
+                        'w-8 h-8 rounded-xl flex items-center justify-center text-sm font-black shrink-0',
+                        selectedRiderId === rider.id ? 'bg-green-600 text-white' : 'bg-green-100 text-green-700'
+                      ]">
                         {{ rider.name.charAt(0).toUpperCase() }}
                       </div>
                       <div class="flex-1 min-w-0">
                         <p class="text-sm font-semibold text-slate-800">{{ rider.name }}</p>
-                        <p v-if="rider.phone" class="text-xs text-slate-400 truncate">{{ rider.phone }}</p>
+                        <p class="text-xs text-slate-400">
+                          {{ rider.phone || `Uses ₱${selectedGallon?.price} per gallon` }}
+                        </p>
                       </div>
                       <CheckCircle v-if="selectedRiderId === rider.id" :size="16" class="text-green-500 shrink-0" />
                     </button>
@@ -572,8 +637,14 @@ onMounted(async () => {
                     selectedType === 'reseller' ? 'bg-violet-600 hover:bg-violet-700' : 'bg-green-600 hover:bg-green-700'
                   ]"
                 >
-                  {{ loading ? 'Recording...' : `Confirm Dispense${selectedRiderName ? ' — ' + selectedRiderName : ''}` }}
+                  <span v-if="loading">Recording...</span>
+                  <span v-else>
+                    Confirm Dispense
+                    <span v-if="selectedRiderName"> — {{ selectedRiderName }}</span>
+                    <span v-else> — Walk-in</span>
+                  </span>
                 </button>
+
               </div>
             </div>
           </Transition>
@@ -581,23 +652,25 @@ onMounted(async () => {
         </div>
       </Transition>
 
-      <!-- ─── Create Gallon Modal (unchanged) ────────────────────────── -->
+      <!-- ─── Create Gallon Modal ────────────────────────── -->
       <Transition name="fade">
         <div v-if="showCreateModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6">
           <Transition name="scale">
             <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden max-h-[90vh] overflow-y-auto">
 
-              <div class="bg-green-600 px-6 py-5 flex items-center justify-between sticky top-0">
+              <div class="bg-green-600 px-6 py-5 flex items-center justify-between sticky top-0 z-10">
                 <div>
                   <h2 class="text-lg font-black text-white">Create Gallon Type</h2>
                   <p class="text-green-100 text-xs mt-0.5">Add a new product to your station</p>
                 </div>
-                <button @click="showCreateModal = false" class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center cursor-pointer transition">
+                <button @click="showCreateModal = false"
+                  class="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center cursor-pointer transition">
                   <X :size="16" class="text-white" />
                 </button>
               </div>
 
               <div class="p-6 space-y-4">
+
                 <!-- Image Upload -->
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-2">Product Image</label>
@@ -619,12 +692,8 @@ onMounted(async () => {
                   <label class="block text-sm font-semibold text-gray-700 mb-2">
                     Gallon Name <span class="text-red-400">*</span>
                   </label>
-                  <input
-                    v-model="newName"
-                    type="text"
-                    placeholder="e.g. Round 5 Gallon, Slim 2.5 Gallon"
-                    class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-                  >
+                  <input v-model="newName" type="text" placeholder="e.g. Round 5 Gallon, Slim 2.5 Gallon"
+                    class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm">
                 </div>
 
                 <!-- Size + Unit -->
@@ -633,22 +702,14 @@ onMounted(async () => {
                     <label class="block text-sm font-semibold text-gray-700 mb-2">
                       Size <span class="text-red-400">*</span>
                     </label>
-                    <input
-                      v-model.number="newSize"
-                      type="number"
-                      min="0.1"
-                      step="0.1"
-                      placeholder="e.g. 5"
-                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-                    >
+                    <input v-model.number="newSize" type="number" min="0.1" step="0.1" placeholder="e.g. 5"
+                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm">
                   </div>
                   <div>
                     <label class="block text-sm font-semibold text-gray-700 mb-2">Unit</label>
-                    <select
-                      v-model="newUnit"
-                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-                    >
-                      <option value="gallon">Gallon</option>
+                    <select v-model="newUnit"
+                      class="w-full h-11.5 bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm">
+                      <option value="gallon" >Gallon</option>
                       <option value="liter">Liter</option>
                       <option value="ml">mL</option>
                     </select>
@@ -662,34 +723,22 @@ onMounted(async () => {
                   </label>
                   <div class="relative">
                     <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">₱</span>
-                    <input
-                      v-model.number="newPrice"
-                      type="number"
-                      min="1"
-                      placeholder="e.g. 30"
-                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 pl-8 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-                    >
+                    <input v-model.number="newPrice" type="number" min="1" placeholder="e.g. 30"
+                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 pl-8 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm">
                   </div>
                 </div>
 
-                <!-- Error -->
                 <div v-if="createError" class="px-4 py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm">
                   {{ createError }}
                 </div>
 
-                <!-- Buttons -->
                 <div class="flex gap-3 pt-2">
-                  <button
-                    @click="createGallonType"
-                    :disabled="creating"
-                    class="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white py-3 rounded-2xl font-bold text-sm transition cursor-pointer"
-                  >
+                  <button @click="createGallonType" :disabled="creating"
+                    class="flex-1 bg-green-600 hover:bg-green-700 disabled:opacity-60 text-white py-3 rounded-2xl font-bold text-sm transition cursor-pointer">
                     {{ creating ? 'Creating...' : 'Create Gallon' }}
                   </button>
-                  <button
-                    @click="showCreateModal = false"
-                    class="flex-1 border border-gray-200 hover:bg-gray-50 text-gray-700 py-3 rounded-2xl font-semibold text-sm transition cursor-pointer"
-                  >
+                  <button @click="showCreateModal = false"
+                    class="flex-1 border border-gray-200 hover:bg-gray-50 text-gray-700 py-3 rounded-2xl font-semibold text-sm transition cursor-pointer">
                     Cancel
                   </button>
                 </div>
@@ -709,10 +758,8 @@ onMounted(async () => {
             <h2 class="text-xl sm:text-2xl font-bold text-gray-700">Dispense Water</h2>
             <p class="text-slate-500 text-xs sm:text-sm mt-1">Manage your gallon types and dispense</p>
           </div>
-          <button
-            @click="showCreateModal = true"
-            class="flex items-center justify-center gap-2 px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-sm transition cursor-pointer"
-          >
+          <button @click="showCreateModal = true"
+            class="flex items-center justify-center gap-2 px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-sm transition cursor-pointer">
             <Plus :size="16" />
             Add Gallon Type
           </button>
@@ -741,7 +788,8 @@ onMounted(async () => {
 
         <!-- Success message -->
         <Transition name="fade">
-          <div v-if="successMsg" class="px-5 py-4 bg-green-50 border border-green-200 rounded-2xl text-green-700 text-sm font-semibold flex items-center gap-2">
+          <div v-if="successMsg"
+            class="px-5 py-4 bg-green-50 border border-green-200 rounded-2xl text-green-700 text-sm font-semibold flex items-center gap-2">
             <CheckCircle :size="16" />
             {{ successMsg }}
           </div>
@@ -755,11 +803,8 @@ onMounted(async () => {
           </div>
           <h3 class="font-bold text-slate-700 text-lg mb-2">No gallon types yet</h3>
           <p class="text-slate-400 text-sm mb-6">Create your first gallon type to start dispensing</p>
-          <button
-            @click="showCreateModal = true"
-            class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-sm transition cursor-pointer"
-          >
-            <Plus :size="14" class="inline mr-1" />
+          <button @click="showCreateModal = true"
+            class="px-6 py-3 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-bold text-sm transition cursor-pointer">
             Create First Gallon
           </button>
         </div>
@@ -771,42 +816,39 @@ onMounted(async () => {
             :key="g.id"
             class="group relative bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300"
           >
-            <!-- Top accent -->
             <div class="absolute top-0 left-0 w-full h-0.5 bg-green-600" />
 
-            <!-- Delete button -->
             <button
-              @click.stop="deleteGallonType(g.id)"
+              @click.stop="openDeleteModal(g)"
               :disabled="deletingId === g.id"
               class="absolute top-3 right-3 z-10 w-8 h-8 rounded-lg bg-white/80 hover:bg-red-50 border border-slate-200 hover:border-red-200 flex items-center justify-center cursor-pointer transition opacity-0 group-hover:opacity-100"
             >
               <Trash2 :size="14" :class="deletingId === g.id ? 'text-slate-300' : 'text-slate-400 hover:text-red-500'" />
             </button>
 
-            <!-- Image -->
-            <div class="h-32 bg-linear-to-br from-green-50 to-slate-50 flex items-center justify-center overflow-hidden">
+            <div class="h-32 bg-gradient-to-br from-green-50 to-slate-50 flex items-center justify-center overflow-hidden">
               <img v-if="g.image_url" :src="g.image_url" :alt="g.name" class="h-full w-full object-cover" />
               <div v-else class="flex flex-col items-center gap-2 text-slate-300">
                 <Droplets :size="36" />
               </div>
             </div>
 
-            <!-- Content -->
             <div class="p-5">
               <h3 class="font-bold text-slate-800 text-base mb-0.5">{{ g.name }}</h3>
               <p class="text-xs text-slate-400 mb-4">{{ g.size }} {{ g.unit }}</p>
 
-              <!-- Price badges -->
               <div class="flex items-center gap-2 mb-5">
                 <span class="px-3 py-1.5 rounded-xl bg-green-100 text-green-700 text-xs font-bold">
-                  Regular ₱{{ g.price }}
+                  Rider ₱{{ g.price }}
+                </span>
+                <span class="px-3 py-1.5 rounded-xl bg-blue-100 text-blue-700 text-xs font-bold">
+                  Walk-in Custom
                 </span>
                 <span class="px-3 py-1.5 rounded-xl bg-violet-100 text-violet-700 text-xs font-bold">
                   Reseller
                 </span>
               </div>
 
-              <!-- Dispense Button -->
               <button
                 @click="openDispense(g)"
                 :disabled="isExpired"
@@ -822,6 +864,63 @@ onMounted(async () => {
       </div>
     </main>
   </div>
+
+  <!-- Delete Gallon Modal -->
+<Transition name="fade">
+  <div
+    v-if="showDeleteModal"
+    class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm flex items-center justify-center p-6"
+  >
+    <Transition name="scale">
+      <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden">
+
+        <!-- Header -->
+        <div class="bg-red-600 px-6 py-5">
+          <h2 class="text-lg font-black text-white">
+            Delete Gallon Type
+          </h2>
+        </div>
+
+        <!-- Body -->
+        <div class="p-6">
+          <p class="text-slate-600 mb-2">
+            Are you sure you want to delete this Product
+            <span class="font-bold text-slate-800">
+              {{ gallonToDelete?.name }}
+            </span>?
+          </p>
+
+          <p class="text-sm text-red-500">
+            This action cannot be undone.
+          </p>
+
+          <div class="flex gap-3 mt-6">
+            <button
+              @click="showDeleteModal = false"
+              class="flex-1 py-3 border border-slate-200 rounded-2xl font-semibold text-slate-700 hover:bg-slate-50 transition cursor-pointer"
+            >
+              Cancel
+            </button>
+
+            <button
+              @click="confirmDelete"
+              :disabled="Boolean(deletingId)"
+              class="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white rounded-2xl font-bold transition cursor-pointer disabled:opacity-50"
+            >
+              {{ deletingId ? 'Deleting...' : 'Delete' }}
+            </button>
+          </div>
+        </div>
+
+      </div>
+    </Transition>
+
+    <div
+      class="absolute inset-0 -z-10"
+      @click="showDeleteModal = false"
+    />
+  </div>
+</Transition>
 </template>
 
 <style scoped>
