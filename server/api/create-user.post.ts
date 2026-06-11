@@ -16,11 +16,14 @@ export default defineEventHandler(async (event) => {
 
   // ── Runtime config ───────────────────────────────────────
   const config = useRuntimeConfig()
-  const serviceKey = config.supabaseServiceRoleKey
-  const supabaseUrl = config.supabaseUrl
+  const serviceKey = config.supabaseServiceRoleKey as string
+  const supabaseUrl = config.supabaseUrl as string
 
   if (!serviceKey || !supabaseUrl) {
-    throw createError({ statusCode: 500, message: 'Missing server config' })
+    throw createError({
+      statusCode: 500,
+      message: `Missing server config — serviceKey: ${!!serviceKey}, url: ${!!supabaseUrl}`
+    })
   }
 
   // ── Plan config ──────────────────────────────────────────
@@ -31,12 +34,11 @@ export default defineEventHandler(async (event) => {
   }
 
   const planConfig = PLANS[plan]
-
   if (!planConfig) {
-    throw createError({ statusCode: 400, message: 'Invalid plan' })
+    throw createError({ statusCode: 400, message: `Invalid plan: ${plan}` })
   }
 
-  if (downpayment < planConfig.minDown) {
+  if (Number(downpayment) < planConfig.minDown) {
     throw createError({
       statusCode: 400,
       message: `Minimum downpayment for ${plan} is ₱${planConfig.minDown.toLocaleString()}`
@@ -48,8 +50,8 @@ export default defineEventHandler(async (event) => {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`
+      'apikey': serviceKey,
+      'Authorization': `Bearer ${serviceKey}`
     },
     body: JSON.stringify({
       email,
@@ -64,22 +66,15 @@ export default defineEventHandler(async (event) => {
 
   const newUserData = await createRes.json()
 
-  console.log('CREATE USER RESPONSE:', newUserData)
-
   if (!createRes.ok) {
     throw createError({
       statusCode: 400,
-      message:
-        newUserData?.message ||
-        newUserData?.error_description ||
-        'Failed to create user'
+      message: newUserData?.message || newUserData?.error_description || 'Failed to create user'
     })
   }
 
-  // ── FIX: correct user ID extraction ───────────────────────
-  const userId =
-    newUserData?.user?.id ||
-    newUserData?.id
+  // ── Extract user ID ──────────────────────────────────────
+  const userId = newUserData?.user?.id || newUserData?.id
 
   if (!userId) {
     throw createError({
@@ -88,8 +83,8 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // ── Optional delay for DB triggers ───────────────────────
-  await new Promise(resolve => setTimeout(resolve, 800))
+  // ── Wait for DB trigger ──────────────────────────────────
+  await new Promise(resolve => setTimeout(resolve, 1500))
 
   // ── Update profile ────────────────────────────────────────
   const profileRes = await fetch(
@@ -98,9 +93,9 @@ export default defineEventHandler(async (event) => {
       method: 'PATCH',
       headers: {
         'Content-Type': 'application/json',
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-        Prefer: 'return=minimal'
+        'apikey': serviceKey,
+        'Authorization': `Bearer ${serviceKey}`,
+        'Prefer': 'return=minimal'
       },
       body: JSON.stringify({
         location,
@@ -120,26 +115,26 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // ── Subscription calculation ──────────────────────────────
-  const remaining = planConfig.total - downpayment
-  const monthlyDue = Math.ceil(remaining / paymentMonths)
+  // ── Create subscription ──────────────────────────────────
+  const remaining = planConfig.total - Number(downpayment)
+  const monthlyDue = Math.ceil(remaining / Number(paymentMonths))
 
   const subRes = await fetch(`${supabaseUrl}/rest/v1/subscriptions`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      apikey: serviceKey,
-      Authorization: `Bearer ${serviceKey}`,
-      Prefer: 'return=representation'
+      'apikey': serviceKey,
+      'Authorization': `Bearer ${serviceKey}`,
+      'Prefer': 'return=representation'
     },
     body: JSON.stringify({
       user_id: userId,
       plan,
       total_price: planConfig.total,
-      downpayment,
+      downpayment: Number(downpayment),
       remaining_balance: remaining,
       monthly_due: monthlyDue,
-      payment_months: paymentMonths,
+      payment_months: Number(paymentMonths),
       start_date: subscriptionStart,
       status: 'active'
     })
@@ -151,7 +146,7 @@ export default defineEventHandler(async (event) => {
   if (!subscriptionId) {
     throw createError({
       statusCode: 500,
-      message: `Failed to create subscription: ${JSON.stringify(subData)}`
+      message: `Subscription failed: ${JSON.stringify(subData)}`
     })
   }
 
@@ -159,10 +154,9 @@ export default defineEventHandler(async (event) => {
   const paymentSchedule = []
   const startDate = new Date(subscriptionStart + 'T00:00:00')
 
-  for (let i = 1; i <= paymentMonths; i++) {
+  for (let i = 1; i <= Number(paymentMonths); i++) {
     const dueDate = new Date(startDate)
     dueDate.setMonth(dueDate.getMonth() + i)
-
     paymentSchedule.push({
       subscription_id: subscriptionId,
       user_id: userId,
@@ -179,9 +173,9 @@ export default defineEventHandler(async (event) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-        Prefer: 'return=minimal'
+        'apikey': serviceKey,
+        'Authorization': `Bearer ${serviceKey}`,
+        'Prefer': 'return=minimal'
       },
       body: JSON.stringify(paymentSchedule)
     }
@@ -195,8 +189,5 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  return {
-    success: true,
-    userId
-  }
+  return { success: true, userId }
 })

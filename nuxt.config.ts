@@ -1,36 +1,16 @@
 declare const process: {
   env: {
-    NUXT_PUBLIC_SUPABASE_URL?: string,
-    NUXT_PUBLIC_SUPABASE_KEY?: string,
-    SUPABASE_SERVICE_ROLE_KEY?: string,
+    NUXT_PUBLIC_SUPABASE_URL?: string
+    NUXT_PUBLIC_SUPABASE_KEY?: string
+    SUPABASE_SERVICE_ROLE_KEY?: string
     SUPABASE_URL?: string
+    NODE_ENV?: string
   }
 }
 
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: false },
-
-  supabase: {
-    url: process.env.NUXT_PUBLIC_SUPABASE_URL,
-    key: process.env.NUXT_PUBLIC_SUPABASE_KEY,
-    redirect: false,
-    cookieOptions: {
-      maxAge: 60 * 60 * 8,
-      sameSite: 'lax',
-      secure: false,    // false for localhost
-    },
-  },
-
-
-  runtimeConfig: {
-    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    supabaseUrl: process.env.SUPABASE_URL,
-    public: {
-      supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL,
-      supabaseKey: process.env.NUXT_PUBLIC_SUPABASE_KEY,
-    }
-  },
 
   modules: [
     '@nuxt/ui',
@@ -42,6 +22,29 @@ export default defineNuxtConfig({
       }
     }],
   ],
+
+  supabase: {
+    url: process.env.NUXT_PUBLIC_SUPABASE_URL,
+    key: process.env.NUXT_PUBLIC_SUPABASE_KEY,
+    redirect: false,
+    cookieOptions: {
+      maxAge: 60 * 60 * 8,
+      sameSite: 'lax',
+      
+      secure: process.env.NODE_ENV === 'production',
+    },
+  },
+
+  runtimeConfig: {
+    // ── FIXED: these names must exactly match useRuntimeConfig() ──
+    supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
+    supabaseUrl: process.env.SUPABASE_URL,
+
+    public: {
+      supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL,
+      supabaseKey: process.env.NUXT_PUBLIC_SUPABASE_KEY,
+    }
+  },
 
   css: ['~/assets/css/main.css'],
 
@@ -57,8 +60,7 @@ export default defineNuxtConfig({
 
   app: {
     head: {
-        title: 'Hydrix Software Solutions',
-      
+      title: 'Hydrix Software Solutions',
       link: [
         {
           rel: 'icon',
