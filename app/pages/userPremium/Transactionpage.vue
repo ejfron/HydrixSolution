@@ -18,61 +18,110 @@
           </button>
         </div>
 
-        <!-- Tabs -->
-        <div class="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-          <button
-            @click="activeTab = 'all'"
-            :class="[
-              'flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold whitespace-nowrap transition cursor-pointer shrink-0',
-              activeTab === 'all'
-                ? 'bg-green-600 text-white shadow-sm'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-            ]"
-          >
-            <LayoutGrid :size="14" />
-            All Transactions
-            <span :class="['px-2 py-0.5 rounded-lg text-[11px] font-bold',
-              activeTab === 'all' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600']">
-              {{ getTabCount('all') }}
-            </span>
-          </button>
+       <!-- Tabs + Date Filters -->
+<div class="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
 
-          <button
-            v-for="rider in riders"
-            :key="rider.id"
-            @click="activeTab = rider.id"
-            :class="[
-              'flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold whitespace-nowrap transition cursor-pointer shrink-0',
-              activeTab === rider.id
-                ? 'bg-green-600 text-white shadow-sm'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-            ]"
-          >
-            <Bike :size="14" />
-            {{ rider.name }}
-            <span :class="['px-2 py-0.5 rounded-lg text-[11px] font-bold',
-              activeTab === rider.id ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600']">
-              {{ getTabCount(rider.id) }}
-            </span>
-          </button>
+  <!-- LEFT: Tabs -->
+  <div class="flex gap-2 overflow-x-auto pb-1 scrollbar-hide flex-1">
 
-          <button
-            v-if="transactions.some(t => !t.rider_id)"
-            @click="activeTab = 'unassigned'"
-            :class="[
-              'flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold whitespace-nowrap transition cursor-pointer shrink-0',
-              activeTab === 'unassigned'
-                ? 'bg-slate-600 text-white shadow-sm'
-                : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
-            ]"
-          >
-            No Rider
-            <span :class="['px-2 py-0.5 rounded-lg text-[11px] font-bold',
-              activeTab === 'unassigned' ? 'bg-white/20 text-white' : 'bg-slate-100 text-slate-600']">
-              {{ getTabCount('unassigned') }}
-            </span>
-          </button>
-        </div>
+    <button
+      @click="activeTab = 'all'"
+      :class="[
+        'flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold whitespace-nowrap transition cursor-pointer shrink-0',
+        activeTab === 'all'
+          ? 'bg-green-600 text-white shadow-sm'
+          : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+      ]"
+    >
+      <LayoutGrid :size="14" />
+      All Transactions
+      <span
+        :class="[
+          'px-2 py-0.5 rounded-lg text-[11px] font-bold',
+          activeTab === 'all'
+            ? 'bg-white/20 text-white'
+            : 'bg-slate-100 text-slate-600'
+        ]"
+      >
+        {{ getTabCount('all') }}
+      </span>
+    </button>
+
+    <button
+      v-for="rider in riders"
+      :key="rider.id"
+      @click="activeTab = rider.id"
+      :class="[
+        'flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold whitespace-nowrap transition cursor-pointer shrink-0',
+        activeTab === rider.id
+          ? 'bg-green-600 text-white shadow-sm'
+          : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+      ]"
+    >
+      <Bike :size="14" />
+      {{ rider.name }}
+      <span
+        :class="[
+          'px-2 py-0.5 rounded-lg text-[11px] font-bold',
+          activeTab === rider.id
+            ? 'bg-white/20 text-white'
+            : 'bg-slate-100 text-slate-600'
+        ]"
+      >
+        {{ getTabCount(rider.id) }}
+      </span>
+    </button>
+
+    <button
+      v-if="transactions.some(t => !t.rider_id)"
+      @click="activeTab = 'unassigned'"
+      :class="[
+        'flex items-center gap-2 px-4 py-2.5 rounded-2xl text-sm font-semibold whitespace-nowrap transition cursor-pointer shrink-0',
+        activeTab === 'unassigned'
+          ? 'bg-slate-600 text-white shadow-sm'
+          : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-50'
+      ]"
+    >
+      No Rider
+      <span
+        :class="[
+          'px-2 py-0.5 rounded-lg text-[11px] font-bold',
+          activeTab === 'unassigned'
+            ? 'bg-white/20 text-white'
+            : 'bg-slate-100 text-slate-600'
+        ]"
+      >
+        {{ getTabCount('unassigned') }}
+      </span>
+    </button>
+
+  </div>
+
+
+  <div class="flex items-center gap-2 shrink-0">
+    <input
+      v-model="startDate"
+      type="date"
+       class="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white text-slate-600"
+    />
+
+    <span class="text-slate-400 text-sm">to</span>
+
+    <input
+      v-model="endDate"
+      type="date"
+       class="px-3 py-2 border border-slate-200 rounded-xl text-sm bg-white text-gray-900"
+    />
+
+    <button
+      @click="() => { startDate = ''; endDate = '' }"
+      class="px-3 text-gray-600 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-sm font-medium transition"
+    >
+      Clear
+    </button>
+  </div>
+
+</div>
 
         <!-- Tab Summary Card -->
         <div class="bg-white rounded-2xl border border-slate-100 px-6 py-4 flex items-center justify-between">
@@ -242,6 +291,9 @@ import { useRoute } from '#app'
 const client = useSupabaseClient() as any
 const user = useSupabaseUser()
 const route = useRoute()
+
+const startDate = ref('')
+const endDate = ref('')
 
 // Determine plan from route (same logic as workers.vue)
 const plan = computed(() => {
@@ -462,9 +514,37 @@ const openActionModal = (tx: Transaction) => {
 }
 
 const filteredTransactions = computed(() => {
-  if (activeTab.value === 'all') return transactions.value
-  if (activeTab.value === 'unassigned') return transactions.value.filter(t => !t.rider_id)
-  return transactions.value.filter(t => t.rider_id === activeTab.value)
+  let filtered = [...transactions.value]
+
+
+  if (activeTab.value === 'unassigned') {
+    filtered = filtered.filter(t => !t.rider_id)
+  } else if (activeTab.value !== 'all') {
+    filtered = filtered.filter(
+      t => t.rider_id === activeTab.value
+    )
+  }
+
+
+  if (startDate.value) {
+    const start = new Date(startDate.value)
+    start.setHours(0, 0, 0, 0)
+
+    filtered = filtered.filter(
+      t => new Date(t.created_at) >= start
+    )
+  }
+
+  if (endDate.value) {
+    const end = new Date(endDate.value)
+    end.setHours(23, 59, 59, 999)
+
+    filtered = filtered.filter(
+      t => new Date(t.created_at) <= end
+    )
+  }
+
+  return filtered
 })
 
 const getTabTotal = (tabId: string) => {
