@@ -514,54 +514,49 @@ const openActionModal = (tx: Transaction) => {
 }
 
 const filteredTransactions = computed(() => {
-  let filtered = [...transactions.value]
+  const tabTxs = getTabTransactions(activeTab.value)
+  return applyDateFilter(tabTxs)
+})
 
-
-  if (activeTab.value === 'unassigned') {
-    filtered = filtered.filter(t => !t.rider_id)
-  } else if (activeTab.value !== 'all') {
-    filtered = filtered.filter(
-      t => t.rider_id === activeTab.value
-    )
-  }
-
+// ── Helper: apply date filter to any list ─────────────────────
+const applyDateFilter = (list: Transaction[]) => {
+  let filtered = [...list]
 
   if (startDate.value) {
     const start = new Date(startDate.value)
     start.setHours(0, 0, 0, 0)
-
-    filtered = filtered.filter(
-      t => new Date(t.created_at) >= start
-    )
+    filtered = filtered.filter(t => new Date(t.created_at) >= start)
   }
 
   if (endDate.value) {
     const end = new Date(endDate.value)
     end.setHours(23, 59, 59, 999)
-
-    filtered = filtered.filter(
-      t => new Date(t.created_at) <= end
-    )
+    filtered = filtered.filter(t => new Date(t.created_at) <= end)
   }
 
   return filtered
-})
+}
 
+// ── Get tab-specific transactions (before date filter) ────────
+const getTabTransactions = (tabId: string) => {
+  if (tabId === 'all') return transactions.value
+  if (tabId === 'unassigned') return transactions.value.filter(t => !t.rider_id)
+  return transactions.value.filter(t => t.rider_id === tabId)
+}
+
+// ── Total respects both tab AND date filter ───────────────────
 const getTabTotal = (tabId: string) => {
-  const txs = tabId === 'all'
-    ? transactions.value
-    : tabId === 'unassigned'
-      ? transactions.value.filter(t => !t.rider_id)
-      : transactions.value.filter(t => t.rider_id === tabId)
-  return txs.reduce((s, t) => s + Number(t.total_amount), 0)
+  const tabTxs = getTabTransactions(tabId)
+  const dateTxs = applyDateFilter(tabTxs)
+  return dateTxs.reduce((s, t) => s + Number(t.total_amount), 0)
 }
 
+// ── Count respects both tab AND date filter ───────────────────
 const getTabCount = (tabId: string) => {
-  if (tabId === 'all') return transactions.value.length
-  if (tabId === 'unassigned') return transactions.value.filter(t => !t.rider_id).length
-  return transactions.value.filter(t => t.rider_id === tabId).length
+  const tabTxs = getTabTransactions(tabId)
+  const dateTxs = applyDateFilter(tabTxs)
+  return dateTxs.length
 }
-
 const formatDate = (d: string) =>
   new Date(d).toLocaleDateString('en-PH', {
     month: 'short', day: 'numeric', year: 'numeric',

@@ -6,6 +6,8 @@ import Navbar from '~/components/userBasic/Navbar.vue'
 import Sidebar from '~/components/userBasic/Sidebar.vue'
 import { useSubscription } from '~/composables/useSubscription'
 
+
+
 type Transaction = {
   id: string
   gallon_type: string
