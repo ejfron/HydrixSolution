@@ -33,13 +33,11 @@ const handleLogin = async () => {
     return
   }
 
-  // ── Manually set session to make sure cookie is established ─
   await client.auth.setSession({
     access_token: data.session.access_token,
     refresh_token: data.session.refresh_token,
   })
 
-  // ── Wait for cookie to be fully written ─────────────────────
   await new Promise(resolve => setTimeout(resolve, 800))
 
   const { data: { user } } = await client.auth.getUser()
@@ -62,27 +60,15 @@ const handleLogin = async () => {
     return
   }
 
-  
-  let redirectPath = '/userBasic'
-
- 
-if (profile.role === 'admin') {
-
-  window.location.href = '/admin'
-} else {
-  // User — redirect based on plan
-  if (profile.plan === 'premium') {
+  if (profile.role === 'admin') {
+    window.location.href = '/admin'
+  } else if (profile.plan === 'premium') {
     window.location.href = '/userPremium'
   } else if (profile.plan === 'standard') {
     window.location.href = '/userStandard'
   } else {
     window.location.href = '/userBasic'
   }
-}
-
-  // ── Use window.location for hard redirect on Mac ─────────────
-  // This forces a full page reload which re-reads the cookie properly
-  window.location.href = redirectPath
 }
 </script>
 
@@ -151,9 +137,8 @@ if (profile.role === 'admin') {
 
         <div class="lg:hidden text-center mb-8">
           <h1 class="text-4xl font-black flex items-center justify-center text-[#0ea44b]">
-                              <!-- app/components/landingpage/navi.vue -->
-<img src="/logo.svg" alt="Hydrix" class="w-full" />
-            </h1>
+            <img src="/logo.svg" alt="Hydrix" class="w-full" />
+          </h1>
         </div>
 
         <div class="bg-white rounded-4xl shadow-2xl border border-gray-100 p-8">

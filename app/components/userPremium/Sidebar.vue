@@ -34,6 +34,7 @@ const mainMenu = [
   { name: 'Reports', path: '/userPremium/Reports', icon: BarChart3 },
   { name: 'Workers', path: '/userPremium/Workers', icon: Users2  },
   { name: 'Subscription', path: '/userPremium/Subscription', icon: HandCoins },
+  {name: 'ChatUser', path: '/userPremium/ChatUser', icon: MessageCircle }
 ]
 
 onMounted(() => fetchProfile())
