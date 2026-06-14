@@ -2,7 +2,7 @@
 import {
   Home, Building2, ReceiptText,
   BarChart3, LogOut, Droplets,
-  PanelLeftClose, PanelLeftOpen, Users2, HandCoins, Bike
+  PanelLeftClose, PanelLeftOpen, Users2, HandCoins, Bike, MessageCircle
 } from '@lucide/vue'
 import { useRoute } from '#app'
 
@@ -34,6 +34,7 @@ const mainMenu = [
   { name: 'Reports', path: '/userStandard/Reports', icon: BarChart3 },
   { name: 'Workers', path: '/userStandard/Workers', icon: Users2  },
   { name: 'Subscription', path: '/userStandard/Subscription', icon: HandCoins },
+  {name: 'ChatUser', path: '/userStandard/ChatUser', icon: MessageCircle}
 ]
 
 onMounted(() => fetchProfile())

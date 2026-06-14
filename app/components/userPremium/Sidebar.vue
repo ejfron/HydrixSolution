@@ -2,7 +2,7 @@
 import {
   Home, Building2, ReceiptText,
   BarChart3, LogOut, Droplets,
-  PanelLeftClose, PanelLeftOpen, Users2, HandCoins, Bike
+  PanelLeftClose, PanelLeftOpen, Users2, HandCoins, Bike, MessageCircle
 } from '@lucide/vue'
 import { useRoute } from '#app'
 

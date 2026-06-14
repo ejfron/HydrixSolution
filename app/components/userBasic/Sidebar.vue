@@ -2,7 +2,7 @@
 import {
   Home, Building2, ReceiptText,
   BarChart3, LogOut, Droplets,
-  PanelLeftClose, PanelLeftOpen, Users2, HandCoins, Bike
+  PanelLeftClose, PanelLeftOpen, Users2, HandCoins, Bike, MessageCircle
 } from '@lucide/vue'
 import { useRoute } from '#app'
 
@@ -14,9 +14,15 @@ const { profile, fetchProfile } = useProfile()
 const OpenSidebar = ref(true)
 const OpenSidebarMenu = () => OpenSidebar.value = !OpenSidebar.value
 
+// Normalize path for comparison (remove trailing slash, ensure consistency)
 const isActive = (path: string) => {
-  if (path === route.path) return true
-  if (path !== '/userBasic' && route.path.startsWith(path + '/')) return true
+  const currentPath = route.path
+  // Normalize both paths by removing trailing slash if exists
+  const normalizedCurrent = currentPath.endsWith('/') ? currentPath.slice(0, -1) : currentPath
+  const normalizedPath = path.endsWith('/') ? path.slice(0, -1) : path
+  
+  if (normalizedCurrent === normalizedPath) return true
+  if (path !== '/userBasic' && normalizedCurrent.startsWith(normalizedPath + '/')) return true
   return false
 }
 
@@ -25,18 +31,24 @@ const handleLogout = async () => {
   router.push('/loginpage')
 }
 
+// FIX: Make sure paths match exactly with your actual routes
 const mainMenu = [
   { name: 'Dashboard', path: '/userBasic', icon: Home },
-  { name: 'DispensePage', path: '/userBasic/Dispense', icon: Droplets },
-  { name: 'Salespage', path: '/userBasic/Salespage', icon: Building2 },
-  { name: 'Riders',       path: '/userBasic/Riders',          icon: Bike },
-  { name: 'Transactions', path: '/userBasic/Transactionpage', icon: ReceiptText },
-  { name: 'Reports', path: '/userBasic/Reports', icon: BarChart3 },
-  { name: 'Workers', path: '/userBasic/Workers', icon: Users2  },
-  { name: 'Subscription', path: '/userBasic/Subscription', icon: HandCoins },
+  { name: 'DispensePage', path: '/userBasic/dispense', icon: Droplets }, // lowercase d
+  { name: 'Salespage', path: '/userBasic/salespage', icon: Building2 }, // lowercase s
+  { name: 'Riders', path: '/userBasic/riders', icon: Bike }, // lowercase r
+  { name: 'Transactions', path: '/userBasic/transactionpage', icon: ReceiptText }, // lowercase t
+  { name: 'Reports', path: '/userBasic/reports', icon: BarChart3 }, // lowercase r
+  { name: 'Workers', path: '/userBasic/workers', icon: Users2 }, // lowercase w
+  { name: 'Subscription', path: '/userBasic/subscription', icon: HandCoins }, // lowercase s
+  { name: 'ChatUser', path: '/userBasic/chatuser', icon: MessageCircle } // lowercase c
+
 ]
 
-onMounted(() => fetchProfile())
+onMounted(() => {
+  fetchProfile()
+  console.log('Current route:', route.path) // Debug: check what route you're on
+})
 </script>
 
 <template>
@@ -90,8 +102,10 @@ onMounted(() => fetchProfile())
             v-for="item in mainMenu"
             :key="item.path"
             :to="item.path"
-            exact-active-class="bg-white text-green-600"
-  class="flex items-center gap-2 md:gap-3 px-2 md:px-3 h-11 rounded-xl transition-all duration-200 text-gray-100 hover:bg-white/25 hover:text-white"
+            :class="[
+              'flex items-center gap-2 md:gap-3 px-2 md:px-3 h-11 rounded-xl transition-all duration-200 text-gray-100 hover:bg-white/10 hover:text-white',
+              isActive(item.path) ? 'bg-white text-green-600' : ''
+            ]"
           >
             <component :is="item.icon" class="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
             <Transition name="fade">
@@ -101,6 +115,8 @@ onMounted(() => fetchProfile())
             </Transition>
           </NuxtLink>
         </div>
+        
+
       </div>
     </div>
 
@@ -120,6 +136,13 @@ onMounted(() => fetchProfile())
 </template>
 
 <style scoped>
-.fade-enter-active, .fade-leave-active { transition: opacity 0.15s ease; }
-.fade-enter-from, .fade-leave-to { opacity: 0; }
+.fade-enter-active, 
+.fade-leave-active { 
+  transition: opacity 0.15s ease; 
+}
+
+.fade-enter-from, 
+.fade-leave-to { 
+  opacity: 0; 
+}
 </style>
