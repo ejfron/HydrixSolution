@@ -1,6 +1,5 @@
 export default defineEventHandler(async (event) => {
   const body = await readBody(event)
-
   const {
     email,
     password,
@@ -10,8 +9,6 @@ export default defineEventHandler(async (event) => {
     subscriptionStart,
     nextPaymentDate,
     plan,
-    downpayment,
-    paymentMonths
   } = body
 
   // ── Runtime config ───────────────────────────────────────
@@ -26,23 +23,16 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // ── Plan config ──────────────────────────────────────────
-  const PLANS: Record<string, { total: number; minDown: number; maxMonths: number }> = {
-    basic:    { total: 10000, minDown: 2000,  maxMonths: 12 },
-    standard: { total: 15000, minDown: 4000,  maxMonths: 12 },
-    premium:  { total: 80000, minDown: 30000, maxMonths: 24 }
+  // ── New Plan config ──────────────────────────────────────
+  const PLANS: Record<string, { setupFee: number; monthlyFee: number; isPremium: boolean }> = {
+    basic:    { setupFee: 2500,  monthlyFee: 500, isPremium: false },
+    standard: { setupFee: 5000,  monthlyFee: 500, isPremium: false },
+    premium:  { setupFee: 80000, monthlyFee: 0,   isPremium: true  },
   }
 
   const planConfig = PLANS[plan]
   if (!planConfig) {
     throw createError({ statusCode: 400, message: `Invalid plan: ${plan}` })
-  }
-
-  if (Number(downpayment) < planConfig.minDown) {
-    throw createError({
-      statusCode: 400,
-      message: `Minimum downpayment for ${plan} is ₱${planConfig.minDown.toLocaleString()}`
-    })
   }
 
   // ── Create Supabase Auth user ────────────────────────────
@@ -65,7 +55,6 @@ export default defineEventHandler(async (event) => {
   })
 
   const newUserData = await createRes.json()
-
   if (!createRes.ok) {
     throw createError({
       statusCode: 400,
@@ -75,18 +64,29 @@ export default defineEventHandler(async (event) => {
 
   // ── Extract user ID ──────────────────────────────────────
   const userId = newUserData?.user?.id || newUserData?.id
-
   if (!userId) {
-    throw createError({
-      statusCode: 500,
-      message: 'User created but ID not returned'
-    })
+    throw createError({ statusCode: 500, message: 'User created but ID not returned' })
   }
 
   // ── Wait for DB trigger ──────────────────────────────────
   await new Promise(resolve => setTimeout(resolve, 1500))
 
   // ── Update profile ────────────────────────────────────────
+  // Premium = no expiry, set next_payment_date to null and status always active
+  const profilePatch: Record<string, any> = {
+    location,
+    subscription_start: subscriptionStart,
+    subscription_status: 'active',
+    plan,
+    setup_fee_paid: true,
+  }
+
+  if (!planConfig.isPremium) {
+    profilePatch.next_payment_date = nextPaymentDate
+  } else {
+    profilePatch.next_payment_date = null // premium never expires
+  }
+
   const profileRes = await fetch(
     `${supabaseUrl}/rest/v1/profiles?id=eq.${userId}`,
     {
@@ -97,28 +97,18 @@ export default defineEventHandler(async (event) => {
         'Authorization': `Bearer ${serviceKey}`,
         'Prefer': 'return=minimal'
       },
-      body: JSON.stringify({
-        location,
-        subscription_start: subscriptionStart,
-        next_payment_date: nextPaymentDate,
-        subscription_status: 'active',
-        plan
-      })
+      body: JSON.stringify(profilePatch)
     }
   )
 
   if (!profileRes.ok) {
     const profileErr = await profileRes.text()
-    throw createError({
-      statusCode: 500,
-      message: `Profile update failed: ${profileErr}`
-    })
+    throw createError({ statusCode: 500, message: `Profile update failed: ${profileErr}` })
   }
 
-  // ── Create subscription ──────────────────────────────────
-  const remaining = planConfig.total - Number(downpayment)
-  const monthlyDue = Math.ceil(remaining / Number(paymentMonths))
-
+  // ── Create subscription record ──────────────────────────
+  // For new model: total_price = setupFee, downpayment = setupFee (paid upfront),
+  // remaining_balance = 0 (setup), monthly_due = monthlyFee, payment_months = 0 (ongoing)
   const subRes = await fetch(`${supabaseUrl}/rest/v1/subscriptions`, {
     method: 'POST',
     headers: {
@@ -130,11 +120,11 @@ export default defineEventHandler(async (event) => {
     body: JSON.stringify({
       user_id: userId,
       plan,
-      total_price: planConfig.total,
-      downpayment: Number(downpayment),
-      remaining_balance: remaining,
-      monthly_due: monthlyDue,
-      payment_months: Number(paymentMonths),
+      total_price: planConfig.setupFee,
+      downpayment: planConfig.setupFee,   // setup fee paid upfront
+      remaining_balance: 0,               // no installment balance
+      monthly_due: planConfig.monthlyFee, // 500 for basic/standard, 0 for premium
+      payment_months: 0,                  // ongoing — no fixed end
       start_date: subscriptionStart,
       status: 'active'
     })
@@ -150,43 +140,40 @@ export default defineEventHandler(async (event) => {
     })
   }
 
-  // ── Payment schedule ──────────────────────────────────────
-  const paymentSchedule = []
-  const startDate = new Date(subscriptionStart + 'T00:00:00')
+  // ── Create first monthly payment entry (if not premium) ──
+  // Only create the FIRST upcoming payment — admin marks paid each month
+  if (!planConfig.isPremium) {
+    const firstDueDate = new Date(subscriptionStart + 'T00:00:00')
+    firstDueDate.setMonth(firstDueDate.getMonth() + 1)
 
-  for (let i = 1; i <= Number(paymentMonths); i++) {
-    const dueDate = new Date(startDate)
-    dueDate.setMonth(dueDate.getMonth() + i)
-    paymentSchedule.push({
-      subscription_id: subscriptionId,
-      user_id: userId,
-      due_date: dueDate.toISOString().split('T')[0],
-      amount_due: monthlyDue,
-      amount_paid: 0,
-      status: 'unpaid'
-    })
-  }
+    const scheduleRes = await fetch(
+      `${supabaseUrl}/rest/v1/subscription_payments`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'apikey': serviceKey,
+          'Authorization': `Bearer ${serviceKey}`,
+          'Prefer': 'return=minimal'
+        },
+        body: JSON.stringify([{
+          subscription_id: subscriptionId,
+          user_id: userId,
+          due_date: firstDueDate.toISOString().split('T')[0],
+          amount_due: planConfig.monthlyFee,
+          amount_paid: 0,
+          status: 'unpaid'
+        }])
+      }
+    )
 
-  const scheduleRes = await fetch(
-    `${supabaseUrl}/rest/v1/subscription_payments`,
-    {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'apikey': serviceKey,
-        'Authorization': `Bearer ${serviceKey}`,
-        'Prefer': 'return=minimal'
-      },
-      body: JSON.stringify(paymentSchedule)
+    if (!scheduleRes.ok) {
+      const schedErr = await scheduleRes.text()
+      throw createError({
+        statusCode: 500,
+        message: `Payment schedule failed: ${schedErr}`
+      })
     }
-  )
-
-  if (!scheduleRes.ok) {
-    const schedErr = await scheduleRes.text()
-    throw createError({
-      statusCode: 500,
-      message: `Payment schedule failed: ${schedErr}`
-    })
   }
 
   return { success: true, userId }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { Plus, Settings, Droplets, Trash2, X, AlertTriangle, MapPin, RefreshCw } from '@lucide/vue'
+import { Plus, Settings, Droplets, Trash2, X, AlertTriangle, MapPin, RefreshCw, Crown, Shield, Star } from '@lucide/vue'
 import { useSupabaseClient } from '#imports'
 
 const client = useSupabaseClient()
@@ -10,6 +10,7 @@ type Profile = {
   station_name: string
   email: string
   role: string
+  plan: string
   location: string
   created_at: string
   subscription_status: string
@@ -42,36 +43,16 @@ const newLocation = ref('')
 const newPassword = ref('')
 const showPassword = ref(false)
 
-// ==================== PLAN CONFIG ====================
+// ==================== NEW PLAN CONFIG ====================
 const PLAN_CONFIG = {
-  basic:    { total: 10000,  minDown: 2000,  maxMonths: 12,  label: 'Basic',    color: 'blue' },
-  standard: { total: 15000,  minDown: 5000,  maxMonths: 12,  label: 'Standard', color: 'green' },
-  premium:  { total: 80000,  minDown: 30000, maxMonths: 24,  label: 'Premium',  color: 'violet' },
+  basic:    { setupFee: 2500,  monthlyFee: 500, label: 'Basic',    color: 'blue',   icon: 'Shield' },
+  standard: { setupFee: 5000,  monthlyFee: 500, label: 'Standard', color: 'green',  icon: 'Star' },
+  premium:  { setupFee: 80000, monthlyFee: 0,   label: 'Premium',  color: 'violet', icon: 'Crown' },
 }
 
 const newPlan = ref<'basic' | 'standard' | 'premium'>('basic')
-const newDownpayment = ref<number | null>(null)
-const newPaymentMonths = ref(6)
 
 const selectedPlanConfig = computed(() => PLAN_CONFIG[newPlan.value])
-
-const remainingBalance = computed(() => {
-  if (!newDownpayment.value) return selectedPlanConfig.value.total
-  return Math.max(0, selectedPlanConfig.value.total - newDownpayment.value)
-})
-
-const monthlyDue = computed(() => {
-  if (remainingBalance.value <= 0) return 0
-  return Math.ceil(remainingBalance.value / newPaymentMonths.value)
-})
-
-const downpaymentError = computed(() => {
-  if (!newDownpayment.value) return ''
-  if (newDownpayment.value < selectedPlanConfig.value.minDown) {
-    return `Minimum downpayment is ₱${selectedPlanConfig.value.minDown.toLocaleString()}`
-  }
-  return ''
-})
 
 const resetForm = () => {
   newFullName.value = ''
@@ -80,8 +61,6 @@ const resetForm = () => {
   newPassword.value = ''
   newLocation.value = ''
   newPlan.value = 'basic'
-  newDownpayment.value = null
-  newPaymentMonths.value = 6
   createError.value = ''
   createSuccess.value = ''
   showPassword.value = false
@@ -95,7 +74,7 @@ const fetchUsers = async () => {
 
   const { data: profiles } = await client
     .from('profiles')
-    .select('id, full_name, station_name, email, role, location, created_at, subscription_status, next_payment_date')
+    .select('id, full_name, station_name, email, role, plan, location, created_at, subscription_status, next_payment_date')
     .eq('role', 'user')
     .order('created_at', { ascending: false })
     .returns<Profile[]>()
@@ -139,7 +118,7 @@ const createUser = async () => {
 
   const today = new Date()
   const subscriptionStart = today.toLocaleDateString('en-CA')
-  const nextPayment = new Date(today) // clone today
+  const nextPayment = new Date(today)
   nextPayment.setMonth(nextPayment.getMonth() + 1)
   const nextPaymentDate = nextPayment.toLocaleDateString('en-CA')
 
@@ -152,11 +131,12 @@ const createUser = async () => {
         fullName: newFullName.value,
         stationName: newStationName.value,
         location: newLocation.value,
-        subscriptionStart: subscriptionStart,   // correct local date
-        nextPaymentDate: nextPaymentDate,   
+        subscriptionStart,
+        nextPaymentDate,
         plan: newPlan.value,
-        downpayment: newDownpayment.value,
-        paymentMonths: newPaymentMonths.value,
+        // New model: setup fee as downpayment, 500/mo ongoing
+        downpayment: selectedPlanConfig.value.setupFee,
+        paymentMonths: 0, // no fixed end — ongoing monthly
       }
     })
 
@@ -173,13 +153,24 @@ const createUser = async () => {
   }
 }
 
+// Renew = extend next_payment_date by 1 month
 const renewSubscription = async (userId: string) => {
-  const nextPayment = new Date()
-  nextPayment.setMonth(nextPayment.getMonth() + 1)
+  // Get current next_payment_date
+  const user = users.value.find(u => u.id === userId)
+  let baseDate = new Date()
+
+  if (user?.next_payment_date) {
+    baseDate = new Date(user.next_payment_date + 'T00:00:00')
+    // If already past due, extend from today instead
+    if (baseDate < new Date()) baseDate = new Date()
+  }
+
+  baseDate.setMonth(baseDate.getMonth() + 1)
+  const newDate = baseDate.toLocaleDateString('en-CA')
 
   await (client.from('profiles') as any)
     .update({
-      next_payment_date: nextPayment.toISOString().split('T')[0],
+      next_payment_date: newDate,
       subscription_status: 'active',
     })
     .eq('id', userId)
@@ -199,10 +190,7 @@ const deleteUser = async () => {
 
   const { error } = await client.rpc('delete_user_by_id', { user_id: deletingId.value } as any)
 
-  if (error) {
-    deleting.value = false
-    return
-  }
+  if (error) { deleting.value = false; return }
 
   users.value = users.value.filter(u => u.id !== deletingId.value)
   showDeleteModal.value = false
@@ -217,37 +205,26 @@ const cancelDelete = () => {
   deletingName.value = ''
 }
 
-// ==================== ADMIN: MARK PAYMENT PAID (Step 6) ====================
-const markPaymentPaid = async (paymentId: string, subscriptionId: string) => {
-  // Fetch the amount due for this payment
-  const { data: paymentData } = await (client.from('subscription_payments') as any)
-    .select('amount_due')
-    .eq('id', paymentId)
-    .single()
-
-  const amountDue = paymentData?.amount_due
-
-  // Update payment as paid
-  await (client.from('subscription_payments') as any)
-    .update({
-      status: 'paid',
-      amount_paid: amountDue,
-      paid_at: new Date().toISOString(),
-    })
-    .eq('id', paymentId)
-
-  // Check if all payments are now paid
-  const { data: remainingUnpaid } = await (client.from('subscription_payments') as any)
-    .select('id')
-    .eq('subscription_id', subscriptionId)
-    .neq('status', 'paid')   // any not paid
-
-  if (!remainingUnpaid || remainingUnpaid.length === 0) {
-    await (client.from('subscriptions') as any)
-      .update({ status: 'completed' })
-      .eq('id', subscriptionId)
-  }
+// Plan badge styles
+const planBadgeClass = (plan: string) => {
+  if (plan === 'premium') return 'bg-violet-100 text-violet-700'
+  if (plan === 'standard') return 'bg-green-100 text-green-700'
+  return 'bg-blue-100 text-blue-700'
 }
+
+// Days remaining helper
+const getDaysRemaining = (nextPaymentDate: string | null) => {
+  if (!nextPaymentDate) return null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const due = new Date(nextPaymentDate + 'T00:00:00')
+  return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+const formatDate = (d: string) =>
+  new Date(d + 'T00:00:00').toLocaleDateString('en-PH', {
+    month: 'short', day: 'numeric', year: 'numeric'
+  })
 
 onMounted(() => fetchUsers())
 </script>
@@ -306,6 +283,10 @@ onMounted(() => fetchUsers())
                   <MapPin :size="10" class="shrink-0" />
                   {{ user.location || 'No location' }}
                 </p>
+                <!-- Plan Badge -->
+                <span :class="['inline-block mt-1 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase', planBadgeClass(user.plan)]">
+                  {{ user.plan || 'basic' }}
+                </span>
               </div>
             </div>
 
@@ -325,15 +306,13 @@ onMounted(() => fetchUsers())
             </div>
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs text-slate-500 shrink-0">Email</span>
-              <span class="text-sm text-slate-700 truncate max-w-40 sm:max-w-40 text-right">{{ user.email }}</span>
+              <span class="text-sm text-slate-700 truncate max-w-40 text-right">{{ user.email }}</span>
             </div>
-            
             <div class="flex items-center justify-between gap-2">
-              <span class="text-xs text-slate-500 shrink-0">Status</span>
-              <div class="flex items-center gap-2 px-3 py-1 rounded-full bg-green-100 text-green-700 text-xs sm:text-sm font-semibold">
-                <div class="w-2 h-2 rounded-full bg-green-500 shrink-0" />
-                Online
-              </div>
+              <span class="text-xs text-slate-500 shrink-0">Monthly Fee</span>
+              <span class="text-sm font-bold text-slate-700">
+                {{ user.plan === 'premium' ? 'Lifetime' : '₱500/mo' }}
+              </span>
             </div>
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs text-slate-500 shrink-0">Joined</span>
@@ -347,35 +326,52 @@ onMounted(() => fetchUsers())
             <!-- Subscription Status -->
             <div
               :class="[
-                'rounded-xl px-3 py-2 text-xs font-semibold flex items-center justify-between gap-2',
+                'rounded-xl px-3 py-2.5 text-xs font-semibold border',
                 user.subscription_status === 'active'
-                  ? 'bg-green-50 text-green-700 border border-green-100'
-                  : 'bg-red-50 text-red-600 border border-red-100'
+                  ? getDaysRemaining(user.next_payment_date) !== null && getDaysRemaining(user.next_payment_date)! <= 7
+                    ? 'bg-yellow-50 text-yellow-700 border-yellow-100'
+                    : 'bg-green-50 text-green-700 border-green-100'
+                  : 'bg-red-50 text-red-600 border-red-100'
               ]"
             >
-              <span>{{ user.subscription_status === 'active' ? 'Active' : 'Expired' }}</span>
-              <span class="truncate">Due: {{ user.next_payment_date || '—' }}</span>
+              <div class="flex items-center justify-between mb-1">
+                <span class="font-bold">
+                  {{ user.subscription_status === 'active' ? '✓ Active' : '✕ Expired' }}
+                </span>
+                <span v-if="user.plan !== 'premium'" class="text-[10px] opacity-70">
+                  {{
+                    getDaysRemaining(user.next_payment_date) !== null
+                      ? getDaysRemaining(user.next_payment_date)! > 0
+                        ? `${getDaysRemaining(user.next_payment_date)} days left`
+                        : 'Overdue'
+                      : '—'
+                  }}
+                </span>
+                <span v-else class="text-[10px] opacity-70">Lifetime Access</span>
+              </div>
+              <div v-if="user.plan !== 'premium'" class="flex items-center justify-between">
+                <span class="opacity-70">Next payment</span>
+                <span>{{ user.next_payment_date ? formatDate(user.next_payment_date) : '—' }}</span>
+              </div>
             </div>
 
-            <!-- Renew button if expired -->
+            <!-- Renew button if expired or expiring soon -->
             <button
-              v-if="user.subscription_status === 'expired'"
+              v-if="user.subscription_status === 'expired' || (getDaysRemaining(user.next_payment_date) !== null && getDaysRemaining(user.next_payment_date)! <= 3)"
               @click="renewSubscription(user.id)"
               class="w-full py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white text-xs font-bold transition cursor-pointer flex items-center justify-center gap-2"
             >
               <RefreshCw :size="13" />
-              Renew Subscription
+              {{ user.subscription_status === 'expired' ? 'Renew Subscription' : 'Extend 1 Month' }}
             </button>
 
             <!-- Total Sales -->
-            <div class="mt-2 rounded-2xl bg-slate-50 p-3 sm:p-4 border border-slate-100">
+            <div class="rounded-2xl bg-slate-50 p-3 sm:p-4 border border-slate-100">
               <p class="text-xs text-slate-500 mb-1">Total Sales</p>
               <h1 class="text-lg font-bold text-green-700">
                 ₱{{ user.total_sales.toLocaleString('en-PH', { minimumFractionDigits: 2 }) }}
               </h1>
-              <p class="text-xs text-green-400 mt-1">
-                {{ user.total_gallons }} Gallons Sold
-              </p>
+              <p class="text-xs text-green-400 mt-1">{{ user.total_gallons }} Gallons Sold</p>
             </div>
           </div>
 
@@ -444,11 +440,12 @@ onMounted(() => fetchUsers())
               <div v-if="createError" class="mb-4 px-4 py-3 bg-red-50 border border-red-200 rounded-2xl text-red-600 text-sm">
                 {{ createError }}
               </div>
-              <div v-if="createSuccess" class="mb-4 px-4 py-3 bg-green-50 border border-green-200 rounded-2xl text-green-600 text-sm">
+              <div v-if="createSuccess" class="mb-4 px-4 py-3 bg-green-50 border border-green-200 rounded-2xl text-green-600 text-sm font-semibold">
                 {{ createSuccess }}
               </div>
 
               <div class="space-y-4">
+
                 <!-- Full Name -->
                 <div>
                   <label class="block text-sm font-semibold text-gray-700 mb-2">Full Name</label>
@@ -492,7 +489,7 @@ onMounted(() => fetchUsers())
                     <button
                       v-for="(config, key) in PLAN_CONFIG" :key="key"
                       type="button"
-                      @click="newPlan = key as any; newDownpayment = null"
+                      @click="newPlan = key as any"
                       :class="[
                         'py-3 px-2 rounded-2xl border-2 text-xs font-bold transition cursor-pointer text-center',
                         newPlan === key
@@ -501,75 +498,39 @@ onMounted(() => fetchUsers())
                       ]"
                     >
                       <p>{{ config.label }}</p>
-                      <p class="font-normal opacity-70 mt-0.5">₱{{ config.total.toLocaleString() }}</p>
+                      <p class="font-normal opacity-70 mt-0.5">₱{{ config.setupFee.toLocaleString() }}</p>
                     </button>
                   </div>
                 </div>
 
                 <!-- Plan Details -->
-                <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-xs space-y-1.5">
+                <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-xs space-y-2">
+                  <p class="font-bold text-slate-700 mb-2">{{ selectedPlanConfig.label }} Plan Details</p>
                   <div class="flex justify-between">
-                    <span class="text-slate-500">Total Price</span>
-                    <span class="font-bold text-slate-700">₱{{ selectedPlanConfig.total.toLocaleString() }}</span>
-                  </div>
-                  <div class="flex justify-between">
-                    <span class="text-slate-500">Min. Downpayment</span>
-                    <span class="font-bold text-slate-700">₱{{ selectedPlanConfig.minDown.toLocaleString() }}</span>
+                    <span class="text-slate-500">Setup Fee (one-time)</span>
+                    <span class="font-bold text-slate-700">₱{{ selectedPlanConfig.setupFee.toLocaleString() }}</span>
                   </div>
                   <div class="flex justify-between">
-                    <span class="text-slate-500">Max Payment Period</span>
-                    <span class="font-bold text-slate-700">{{ selectedPlanConfig.maxMonths }} months</span>
+                    <span class="text-slate-500">Monthly Fee</span>
+                    <span class="font-bold text-slate-700">
+                      {{ selectedPlanConfig.monthlyFee === 0 ? 'Free (Lifetime)' : `₱${selectedPlanConfig.monthlyFee}/mo` }}
+                    </span>
                   </div>
-                </div>
-
-                <!-- Downpayment -->
-                <div>
-                  <label class="block text-sm font-semibold text-gray-700 mb-2">
-                    Downpayment <span class="text-red-400">*</span>
-                  </label>
-                  <div class="relative">
-                    <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-sm font-bold">₱</span>
-                    <input
-                      v-model.number="newDownpayment"
-                      type="number"
-                      :min="selectedPlanConfig.minDown"
-                      :max="selectedPlanConfig.total"
-                      :placeholder="`Min ₱${selectedPlanConfig.minDown.toLocaleString()}`"
-                      class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 pl-8 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-                    >
+                  <div class="flex justify-between border-t border-slate-200 pt-2 mt-1">
+                    <span class="text-slate-500">First Payment Due</span>
+                    <span class="font-bold text-green-600">
+                      {{ new Date(new Date().setMonth(new Date().getMonth() + 1)).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) }}
+                    </span>
                   </div>
-                  <p v-if="downpaymentError" class="text-red-500 text-xs mt-1">{{ downpaymentError }}</p>
-                </div>
-
-                <!-- Payment Months -->
-                <div>
-                  <label class="block text-sm font-semibold text-gray-700 mb-2">Payment Period</label>
-                  <select
-                    v-model.number="newPaymentMonths"
-                    class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
-                  >
-                    <option v-for="m in Array.from({length: selectedPlanConfig.maxMonths}, (_, i) => i + 1)" :key="m" :value="m">
-                      {{ m }} month{{ m > 1 ? 's' : '' }}
-                    </option>
-                  </select>
-                </div>
-
-                <!-- Payment Preview -->
-                <div v-if="newDownpayment && !downpaymentError" class="bg-green-50 rounded-2xl p-4 border border-green-100">
-                  <p class="text-xs text-green-700 font-semibold mb-2">Payment Summary</p>
-                  <div class="space-y-1.5 text-xs">
-                    <div class="flex justify-between">
-                      <span class="text-slate-500">Downpayment</span>
-                      <span class="font-bold text-green-600">₱{{ newDownpayment.toLocaleString() }}</span>
-                    </div>
-                    <div class="flex justify-between">
-                      <span class="text-slate-500">Remaining Balance</span>
-                      <span class="font-bold text-slate-700">₱{{ remainingBalance.toLocaleString() }}</span>
-                    </div>
-                    <div class="flex justify-between border-t border-green-100 pt-1.5">
-                      <span class="text-slate-500">Monthly Due ({{ newPaymentMonths }}mo)</span>
-                      <span class="font-bold text-slate-700">₱{{ monthlyDue.toLocaleString() }}/mo</span>
-                    </div>
+                  <div v-if="newPlan === 'premium'" class="bg-violet-50 rounded-xl px-3 py-2 border border-violet-100 mt-2">
+                    <p class="text-violet-700 font-semibold text-[11px]">
+                      ✓ Premium users pay setup fee only — no monthly charges
+                    </p>
+                  </div>
+                  <div v-else class="bg-green-50 rounded-xl px-3 py-2 border border-green-100 mt-2">
+                    <p class="text-green-700 font-semibold text-[11px]">
+                      ✓ Setup fee collected upfront — then ₱500/month ongoing
+                    </p>
                   </div>
                 </div>
 
@@ -606,7 +567,6 @@ onMounted(() => fetchUsers())
         <div class="absolute inset-0 -z-10" @click="closeModal" />
       </div>
     </Transition>
-
   </div>
 </template>
 
