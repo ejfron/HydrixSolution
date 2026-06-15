@@ -3,7 +3,7 @@ export interface Worker {
   name: string
   rate: number
   regular_hours: number
-  pay_schedule: 'weekly' | 'kinsenas'
+  pay_schedule: 'weekly' | 'kinsenas' | 'daily'
   is_active: boolean
   created_at: string
 }

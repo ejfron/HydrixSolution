@@ -53,7 +53,7 @@
 
             <div class="mt-6">
               <span class="text-xs bg-gray-100 text-gray-700 px-3 py-1.5 rounded-full">
-                 ₱2,999 Setup System Only
+                 ₱2,499 Setup System Only
               </span>
             </div>
           </div>
@@ -99,7 +99,7 @@
               <span
                 class="text-xs bg-primary-100 text-primary-700 px-3 py-1.5 rounded-full font-semibold"
               >
-                ₱5,999 Setup System Only
+                ₱4,999 Setup System Only
               </span>
             </div>
           </div>
@@ -116,7 +116,7 @@
 
             <div class="mt-4">
               <span class="text-5xl font-extrabold text-gray-900">
-                ₱2,999
+                ₱799
               </span>
 
               <span class="text-gray-500">
