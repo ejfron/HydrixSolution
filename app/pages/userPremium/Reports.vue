@@ -6,9 +6,17 @@ import Navbar from '~/components/userPremium/Navbar.vue'
 import Sidebar from '~/components/userPremium/Sidebar.vue'
 
 type Transaction = {
+  id: string
   total_amount: number
   quantity: number
   created_at: string
+}
+
+type DebtPayment = {
+  id: string
+  transaction_id: string
+  amount_paid: number
+  paid_at: string
 }
 
 const client = useSupabaseClient()
@@ -19,46 +27,124 @@ const dailyData = ref<{ date: string; total: number; gallons: number }[]>([])
 const monthlyData = ref<{ month: string; total: number; gallons: number }[]>([])
 const yearlyData = ref<{ year: string; total: number; gallons: number }[]>([])
 
+// Philippines is UTC+8 with no DST. Grouping by raw created_at/paid_at using
+// the browser/server's local timezone can put a sale or payment under the
+// wrong calendar day relative to Manila time. These helpers convert any UTC
+// timestamp into Philippine-time date/month/year labels so the report
+// buckets match the calendar day a person in Manila would expect.
+const PH_OFFSET_MS = 8 * 60 * 60 * 1000
+
+const toPhDate = (isoString: string) => {
+  const utcMs = new Date(isoString).getTime()
+  return new Date(utcMs + PH_OFFSET_MS)
+}
+
+const phDayKey = (isoString: string) => {
+  const d = toPhDate(isoString)
+  // Sortable key for internal ordering, formatted label for display
+  const sortKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`
+  const label = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate()))
+    .toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' })
+  return { sortKey, label }
+}
+
+const phMonthKey = (isoString: string) => {
+  const d = toPhDate(isoString)
+  const sortKey = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`
+  const label = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1))
+    .toLocaleDateString('en-PH', { month: 'long', year: 'numeric', timeZone: 'UTC' })
+  return { sortKey, label }
+}
+
+const phYearKey = (isoString: string) => {
+  const d = toPhDate(isoString)
+  const y = String(d.getUTCFullYear())
+  return { sortKey: y, label: y }
+}
+
 const fetchReports = async () => {
   const { data: { session } } = await client.auth.getSession()
   const userId = user.value?.id ?? session?.user?.id
   if (!userId) return
 
-  const { data } = await client
+  const { data: txData } = await client
     .from('transactions')
-    .select('total_amount, quantity, created_at')
+    .select('id, total_amount, quantity, created_at')
     .eq('user_id', userId)
-    .eq('status', 'completed')
-    .order('created_at', { ascending: false })
     .returns<Transaction[]>()
 
-  if (!data) return
+  if (!txData) return
 
-  const dailyMap: Record<string, { total: number; gallons: number }> = {}
-  const monthlyMap: Record<string, { total: number; gallons: number }> = {}
-  const yearlyMap: Record<string, { total: number; gallons: number }> = {}
+  const { data: dpData } = await client
+    .from('debt_payments')
+    .select('id, transaction_id, amount_paid, paid_at')
+    .eq('user_id', userId)
+    .returns<DebtPayment[]>()
 
-  for (const t of data) {
-    const d = new Date(t.created_at)
-    const dayKey = d.toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' })
-    const monthKey = d.toLocaleDateString('en-PH', { month: 'long', year: 'numeric' })
-    const yearKey = String(d.getFullYear())
+  const payments = dpData || []
 
-    if (!dailyMap[dayKey]) dailyMap[dayKey] = { total: 0, gallons: 0 }
-    if (!monthlyMap[monthKey]) monthlyMap[monthKey] = { total: 0, gallons: 0 }
-    if (!yearlyMap[yearKey]) yearlyMap[yearKey] = { total: 0, gallons: 0 }
+  type Bucket = { total: number; gallons: number; sortKey: string }
+  const dailyMap: Record<string, Bucket> = {}
+  const monthlyMap: Record<string, Bucket> = {}
+  const yearlyMap: Record<string, Bucket> = {}
 
-    dailyMap[dayKey].total += Number(t.total_amount)
-    dailyMap[dayKey].gallons += Number(t.quantity)
-    monthlyMap[monthKey].total += Number(t.total_amount)
-    monthlyMap[monthKey].gallons += Number(t.quantity)
-    yearlyMap[yearKey].total += Number(t.total_amount)
-    yearlyMap[yearKey].gallons += Number(t.quantity)
+  // Gets the existing bucket for `label` or creates one, returning a direct
+  // reference. Avoids repeated `map[label]` lookups, which TypeScript (with
+  // noUncheckedIndexedAccess) treats as possibly undefined even immediately
+  // after an existence check on the line above.
+  const getOrCreateBucket = (map: Record<string, Bucket>, label: string, sortKey: string): Bucket => {
+    const existing = map[label]
+    if (existing) return existing
+    const created: Bucket = { total: 0, gallons: 0, sortKey }
+    map[label] = created
+    return created
   }
 
-  dailyData.value = Object.entries(dailyMap).slice(0, 7).map(([date, v]) => ({ date, ...v }))
-  monthlyData.value = Object.entries(monthlyMap).slice(0, 12).map(([month, v]) => ({ month, ...v }))
-  yearlyData.value = Object.entries(yearlyMap).map(([year, v]) => ({ year, ...v }))
+  // Revenue ("Total Sales") is grouped by the date money was actually
+  // COLLECTED (debt_payments.paid_at), not by when the sale was created.
+  // A June 20 utang paid off on June 21 now shows up under June 21 here —
+  // matching the Transactions and Sales pages.
+  for (const p of payments) {
+    const amt = Number(p.amount_paid)
+
+    const day = phDayKey(p.paid_at)
+    getOrCreateBucket(dailyMap, day.label, day.sortKey).total += amt
+
+    const month = phMonthKey(p.paid_at)
+    getOrCreateBucket(monthlyMap, month.label, month.sortKey).total += amt
+
+    const year = phYearKey(p.paid_at)
+    getOrCreateBucket(yearlyMap, year.label, year.sortKey).total += amt
+  }
+
+  // Gallons sold are grouped by created_at — that reflects when the gallons
+  // physically went out the door, independent of when payment is collected.
+  for (const t of txData) {
+    const qty = Number(t.quantity)
+
+    const day = phDayKey(t.created_at)
+    getOrCreateBucket(dailyMap, day.label, day.sortKey).gallons += qty
+
+    const month = phMonthKey(t.created_at)
+    getOrCreateBucket(monthlyMap, month.label, month.sortKey).gallons += qty
+
+    const year = phYearKey(t.created_at)
+    getOrCreateBucket(yearlyMap, year.label, year.sortKey).gallons += qty
+  }
+
+  dailyData.value = Object.entries(dailyMap)
+    .sort((a, b) => b[1].sortKey.localeCompare(a[1].sortKey))
+    .slice(0, 7)
+    .map(([date, v]) => ({ date, total: v.total, gallons: v.gallons }))
+
+  monthlyData.value = Object.entries(monthlyMap)
+    .sort((a, b) => b[1].sortKey.localeCompare(a[1].sortKey))
+    .slice(0, 12)
+    .map(([month, v]) => ({ month, total: v.total, gallons: v.gallons }))
+
+  yearlyData.value = Object.entries(yearlyMap)
+    .sort((a, b) => b[1].sortKey.localeCompare(a[1].sortKey))
+    .map(([year, v]) => ({ year, total: v.total, gallons: v.gallons }))
 }
 
 const currentData = computed(() => {

@@ -2,14 +2,16 @@
 import {
   Home, Building2, ReceiptText,
   BarChart3, LogOut, Droplets,
-  PanelLeftClose, PanelLeftOpen, Users2, HandCoins, Bike, MessageCircle
+  PanelLeftClose, PanelLeftOpen, Users2, HandCoins, Bike, MessageCircle, X
 } from '@lucide/vue'
 import { useRoute } from '#app'
+import { useSidebarState } from '~/composables/useSidebarState'
 
 const route = useRoute()
 const router = useRouter()
 const client = useSupabaseClient()
 const { profile, fetchProfile } = useProfile()
+const { isMobileSidebarOpen, closeMobileSidebar } = useSidebarState()
 
 const OpenSidebar = ref(true)
 const OpenSidebarMenu = () => OpenSidebar.value = !OpenSidebar.value
@@ -34,20 +36,39 @@ const mainMenu = [
   { name: 'Reports', path: '/userPremium/Reports', icon: BarChart3 },
   { name: 'Workers', path: '/userPremium/Workers', icon: Users2  },
   { name: 'Subscription', path: '/userPremium/Subscription', icon: HandCoins },
-  {name: 'ChatUser', path: '/userPremium/ChatUser', icon: MessageCircle }
+  {name: 'ChatUser', path: '/userPremium/ChatUser', icon: MessageCircle}
 ]
+
+// Close the mobile sidebar automatically after navigating, so tapping a
+// link doesn't leave the panel open over the new page.
+watch(() => route.path, () => {
+  closeMobileSidebar()
+})
 
 onMounted(() => fetchProfile())
 </script>
 
 <template>
+  <!--
+    Mobile (below md): the sidebar is taken out of the document flow (fixed)
+    and translated off-screen by default. Toggling isMobileSidebarOpen (via
+    the hamburger button in Navbar.vue) slides it in. Per the chosen layout,
+    a matching spacer div (below) pushes the page content to the side when
+    open, rather than overlaying with a backdrop.
+
+    Desktop (md and up): behaves exactly as before — sticky, always visible,
+    collapsible to an icon-only rail via the PanelLeftClose/Open toggle.
+  -->
   <aside
     :class="[
-      'h-screen sticky top-0 shrink-0 bg-green-600 border-r border-white/10 text-white flex flex-col transition-all duration-300',
-      OpenSidebar ? 'w-55 md:w-67.5' : 'w-16 md:w-19.5'
+      'h-screen top-0 shrink-0 bg-green-600 border-r border-white/10 text-white flex flex-col transition-all duration-300 z-40',
+      'fixed md:sticky',
+      isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+      'md:translate-x-0',
+      OpenSidebar ? 'w-55 md:w-67.5' : 'w-55 md:w-19.5'
     ]"
   >
-    <div class="flex-1">
+    <div class="flex-1 overflow-y-auto">
       <!-- Header -->
       <div class="h-16 border-b border-white/10 flex items-center px-3 md:px-4 justify-between">
         <div class="flex items-center gap-2 md:gap-3 min-w-0">
@@ -65,15 +86,24 @@ onMounted(() => fetchProfile())
           </Transition>
         </div>
 
+        <!-- Desktop collapse toggle (hidden on mobile, mobile uses the X below) -->
         <button
           @click="OpenSidebarMenu"
           :class="[
-            'cursor-pointer p-2 rounded-lg transition',
+            'hidden md:inline-flex cursor-pointer p-2 rounded-lg transition',
             OpenSidebar ? '' : 'ml-8 md:ml-12 bg-gray-100 text-green-600',
           ]"
         >
           <PanelLeftClose v-if="OpenSidebar" class="w-4 h-4 sm:w-5 sm:h-5 text-gray-100" />
           <PanelLeftOpen v-else class="w-4 h-4 sm:w-5 sm:h-5" />
+        </button>
+
+        <!-- Mobile close button -->
+        <button
+          @click="closeMobileSidebar"
+          class="md:hidden cursor-pointer p-2 rounded-lg text-gray-100 hover:bg-white/10 transition"
+        >
+          <PanelLeftClose class="w-5 h-5" />
         </button>
       </div>
 
@@ -92,7 +122,7 @@ onMounted(() => fetchProfile())
             :key="item.path"
             :to="item.path"
             exact-active-class="bg-white text-green-600"
-  class="flex items-center gap-2 md:gap-3 px-2 md:px-3 h-11 rounded-xl transition-all duration-200 text-gray-100 hover:bg-white/25 hover:text-white"
+            class="flex items-center gap-2 md:gap-3 px-2 md:px-3 h-11 rounded-xl transition-all duration-200 text-gray-100 hover:bg-white/25 hover:text-white"
           >
             <component :is="item.icon" class="w-4 h-4 sm:w-5 sm:h-5 shrink-0" />
             <Transition name="fade">
@@ -118,6 +148,14 @@ onMounted(() => fetchProfile())
       </button>
     </div>
   </aside>
+
+  
+  <div
+    :class="[
+      'shrink-0 transition-all duration-300 md:hidden',
+      isMobileSidebarOpen ? 'w-55' : 'w-0'
+    ]"
+  ></div>
 </template>
 
 <style scoped>

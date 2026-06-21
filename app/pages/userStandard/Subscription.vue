@@ -4,6 +4,38 @@ import { CreditCard, CheckCircle, Clock, AlertCircle, Calendar, RefreshCw } from
 import Navbar from '~/components/userStandard/Navbar.vue'
 import Sidebar from '~/components/userStandard/Sidebar.vue'
 
+const router = useRouter()
+const paying = ref(false)
+const payError = ref('')
+
+const handlePay = async () => {
+  paying.value = true
+  payError.value = ''
+
+  try {
+    const { data: { session } } = await client.auth.getSession()
+    const userId = user.value?.id ?? session?.user?.id
+    const email = session?.user?.email
+
+    const result = await $fetch<{ checkoutUrl?: string }>('/api/create-payment', {
+      method: 'POST',
+      body: { userId, email, planLabel: profile.value?.plan }
+    })
+
+  
+    if (result.checkoutUrl) {
+      window.location.href = result.checkoutUrl
+    }
+  } catch (err: any) {
+    payError.value = err?.data?.message || 'Payment failed. Please try again.'
+    paying.value = false
+
+     setTimeout(() => {
+      payError.value = ''
+    }, 3000);
+  }
+}
+
 const client = useSupabaseClient()
 const user = useSupabaseUser()
 
@@ -265,11 +297,26 @@ onMounted(() => fetchData())
             <div class="px-6 py-4 bg-slate-50 border-t border-slate-100">
               <p class="text-xs text-slate-500 font-semibold mb-1">How to pay your monthly ₱500:</p>
               <p class="text-xs text-slate-400">Message us on Facebook or GCash to record your payment. Admin will update your account within 24 hours.</p>
-              <a href="https://www.facebook.com/ej.fron16" target="_blank"
-                class="inline-block mt-2 text-xs text-green-600 font-bold hover:underline">
-                → Contact Admin on Facebook
-              </a>
+              
+                <div class="flex gap-2">
+                  <button
+                  @click="handlePay"
+                  :disabled="paying"
+                  class="px-4 py-2 mt-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1"
+                >
+                  <span v-if="paying">Processing...</span>
+                  <span v-else">Pay via GCash ₱500</span>
+                </button>
+
+
+                    <a href="https://www.facebook.com/ej.fron16" target="_blank"
+                      class="px-4 py-2 mt-3 bg-green-600 hover:bg-green-700 text-white rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1">
+                      <span>Upgrade on Premium</span>
+                    </a>
+                </div>
+               <p v-if="payError" class="text-xs text-red-500 mt-2">{{ payError }}</p>
             </div>
+
           </div>
 
         </template>

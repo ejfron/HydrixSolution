@@ -2,14 +2,16 @@
 import {
   Home, Building2, ReceiptText,
   BarChart3, LogOut, Droplets,
-  PanelLeftClose, PanelLeftOpen, Users2, HandCoins, Bike, MessageCircle
+  PanelLeftClose, PanelLeftOpen, Users2, HandCoins, Bike, MessageCircle, MessageCircleQuestionMark, X
 } from '@lucide/vue'
 import { useRoute } from '#app'
+import { useSidebarState } from '~/composables/useSidebarState'
 
 const route = useRoute()
 const router = useRouter()
 const client = useSupabaseClient()
 const { profile, fetchProfile } = useProfile()
+const { isMobileSidebarOpen, closeMobileSidebar } = useSidebarState()
 
 const OpenSidebar = ref(true)
 const OpenSidebarMenu = () => OpenSidebar.value = !OpenSidebar.value
@@ -20,7 +22,7 @@ const isActive = (path: string) => {
   // Normalize both paths by removing trailing slash if exists
   const normalizedCurrent = currentPath.endsWith('/') ? currentPath.slice(0, -1) : currentPath
   const normalizedPath = path.endsWith('/') ? path.slice(0, -1) : path
-  
+
   if (normalizedCurrent === normalizedPath) return true
   if (path !== '/userBasic' && normalizedCurrent.startsWith(normalizedPath + '/')) return true
   return false
@@ -41,9 +43,15 @@ const mainMenu = [
   { name: 'Reports', path: '/userBasic/reports', icon: BarChart3 }, // lowercase r
   { name: 'Workers', path: '/userBasic/workers', icon: Users2 }, // lowercase w
   { name: 'Subscription', path: '/userBasic/subscription', icon: HandCoins }, // lowercase s
-  { name: 'ChatUser', path: '/userBasic/chatuser', icon: MessageCircle } // lowercase c
-
+  { name: 'ChatUser', path: '/userBasic/chatuser', icon: MessageCircle }, // lowercase c
+  { name: 'HelpGuide', path: '/userBasic/HelpGuide', icon: MessageCircleQuestionMark }
 ]
+
+// Close the mobile sidebar automatically after navigating, so tapping a
+// link doesn't leave the panel open over the new page.
+watch(() => route.path, () => {
+  closeMobileSidebar()
+})
 
 onMounted(() => {
   fetchProfile()
@@ -52,13 +60,26 @@ onMounted(() => {
 </script>
 
 <template>
+  <!--
+    Mobile (below md): the sidebar is taken out of the document flow (fixed)
+    and translated off-screen by default. Toggling isMobileSidebarOpen (via
+    the hamburger button in Navbar.vue) slides it in. A matching spacer div
+    (below) pushes the page content to the side when open, rather than
+    overlaying with a backdrop.
+
+    Desktop (md and up): behaves exactly as before — sticky, always visible,
+    collapsible to an icon-only rail via the PanelLeftClose/Open toggle.
+  -->
   <aside
     :class="[
-      'h-screen sticky top-0 shrink-0 bg-green-600 border-r border-white/10 text-white flex flex-col transition-all duration-300',
-      OpenSidebar ? 'w-55 md:w-67.5' : 'w-16 md:w-19.5'
+      'h-screen top-0 shrink-0 bg-green-600 border-r border-white/10 text-white flex flex-col transition-all duration-300 z-40',
+      'fixed md:sticky',
+      isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full',
+      'md:translate-x-0',
+      OpenSidebar ? 'w-55 md:w-67.5' : 'w-55 md:w-19.5'
     ]"
   >
-    <div class="flex-1">
+    <div class="flex-1 overflow-y-auto">
       <!-- Header -->
       <div class="h-16 border-b border-white/10 flex items-center px-3 md:px-4 justify-between">
         <div class="flex items-center gap-2 md:gap-3 min-w-0">
@@ -76,15 +97,24 @@ onMounted(() => {
           </Transition>
         </div>
 
+        <!-- Desktop collapse toggle (hidden on mobile, mobile uses the X below) -->
         <button
           @click="OpenSidebarMenu"
           :class="[
-            'cursor-pointer p-2 rounded-lg transition',
+            'hidden md:inline-flex cursor-pointer p-2 rounded-lg transition',
             OpenSidebar ? '' : 'ml-8 md:ml-12 bg-gray-100 text-green-600',
           ]"
         >
           <PanelLeftClose v-if="OpenSidebar" class="w-4 h-4 sm:w-5 sm:h-5 text-gray-100" />
           <PanelLeftOpen v-else class="w-4 h-4 sm:w-5 sm:h-5" />
+        </button>
+
+        <!-- Mobile close button -->
+        <button
+          @click="closeMobileSidebar"
+          class="md:hidden cursor-pointer p-2 rounded-lg text-gray-100 hover:bg-white/10 transition"
+        >
+          <PanelLeftClose class="w-5 h-5" />
         </button>
       </div>
 
@@ -115,7 +145,6 @@ onMounted(() => {
             </Transition>
           </NuxtLink>
         </div>
-        
 
       </div>
     </div>
@@ -133,6 +162,14 @@ onMounted(() => {
       </button>
     </div>
   </aside>
+
+
+  <div
+    :class="[
+      'shrink-0 transition-all duration-300 md:hidden',
+      isMobileSidebarOpen ? 'w-55' : 'w-0'
+    ]"
+  ></div>
 </template>
 
 <style scoped>

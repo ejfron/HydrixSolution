@@ -134,8 +134,8 @@ import { Image, MailCheck, MessageCircle, Phone, MapPinCheck } from '@lucide/vue
       <div class="border-t border-gray-800 mt-4 pt-8 text-center text-sm">
         <p>
           &copy; 2026 Hydrix. All rights reserved. |
-          <a href="#" class="hover:text-white">Privacy Policy</a> |
-          <a href="#" class="hover:text-white">Terms of Service</a>
+          <a href="/Privacy" class="hover:text-white">Privacy Policy</a> |
+          <a href="/Terms" class="hover:text-white">Terms of Service</a>
         </p>
       </div>
     </div>

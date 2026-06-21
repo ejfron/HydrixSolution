@@ -45,7 +45,7 @@ const showPassword = ref(false)
 
 // ==================== NEW PLAN CONFIG ====================
 const PLAN_CONFIG = {
-  basic:    { setupFee: 2500,  monthlyFee: 500, label: 'Basic',    color: 'blue',   icon: 'Shield' },
+  basic:    { setupFee: 2500,  monthlyFee: 300, label: 'Basic',    color: 'blue',   icon: 'Shield' },
   standard: { setupFee: 5000,  monthlyFee: 500, label: 'Standard', color: 'green',  icon: 'Star' },
   premium:  { setupFee: 80000, monthlyFee: 0,   label: 'Premium',  color: 'violet', icon: 'Crown' },
 }
@@ -309,11 +309,11 @@ onMounted(() => fetchUsers())
               <span class="text-sm text-slate-700 truncate max-w-40 text-right">{{ user.email }}</span>
             </div>
             <div class="flex items-center justify-between gap-2">
-              <span class="text-xs text-slate-500 shrink-0">Monthly Fee</span>
-              <span class="text-sm font-bold text-slate-700">
-                {{ user.plan === 'premium' ? 'Lifetime' : '₱500/mo' }}
-              </span>
-            </div>
+  <span class="text-xs text-slate-500 shrink-0">Monthly Fee</span>
+  <span class="text-sm font-bold text-slate-700">
+    {{ user.plan === 'premium' ? 'Lifetime' : `₱${PLAN_CONFIG[user.plan as 'basic' | 'standard']?.monthlyFee ?? 500}/mo` }}
+  </span>
+</div>
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs text-slate-500 shrink-0">Joined</span>
               <span class="text-sm text-slate-700 text-right">

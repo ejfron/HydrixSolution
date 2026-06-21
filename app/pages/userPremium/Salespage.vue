@@ -7,6 +7,7 @@ import Sidebar from '~/components/userPremium/Sidebar.vue'
 import SalesStats from '~/components/userPremium/SalesStats.vue'
 
 type Transaction = {
+  id: string
   gallon_type: string
   quantity: number
   total_amount: number
@@ -14,6 +15,13 @@ type Transaction = {
   balance_due: number
   payment_status: string
   created_at: string
+}
+
+type DebtPayment = {
+  id: string
+  transaction_id: string
+  amount_paid: number
+  paid_at: string
 }
 
 type GallonBreakdown = {
@@ -43,87 +51,101 @@ const gallon_breakdown = ref<GallonBreakdown>({
   '5gal': { quantity: 0, amount: 0 },
 })
 
+
+const PH_OFFSET_MS = 8 * 60 * 60 * 1000
+
+const toPhDateParts = (isoString: string) => {
+  const utcMs = new Date(isoString).getTime()
+  const phMs = utcMs + PH_OFFSET_MS
+  const ph = new Date(phMs)
+  return {
+    dateKey: `${ph.getUTCFullYear()}-${String(ph.getUTCMonth() + 1).padStart(2, '0')}-${String(ph.getUTCDate()).padStart(2, '0')}`,
+    month: ph.getUTCMonth(),
+    year: ph.getUTCFullYear()
+  }
+}
+
+const phNowParts = () => toPhDateParts(new Date().toISOString())
+
 const fetchSales = async () => {
   const { data: { session } } = await client.auth.getSession()
   const userId = user.value?.id ?? session?.user?.id
   if (!userId) return
 
-  const { data } = await client
+  const { data: txData } = await client
     .from('transactions')
-    .select('gallon_type, quantity, total_amount, amount_paid, balance_due, payment_status, created_at')
+    .select('id, gallon_type, quantity, total_amount, amount_paid, balance_due, payment_status, created_at')
     .eq('user_id', userId)
-    .eq('status', 'completed')
     .returns<Transaction[]>()
 
-  if (!data) return
+  if (!txData) return
 
-  const now = new Date()
-  const todayStr = now.toDateString()
-  const yesterdayStr = new Date(now.getTime() - 86400000).toDateString()
-  const thisMonth = now.getMonth()
-  const thisYear = now.getFullYear()
+  const { data: dpData } = await client
+    .from('debt_payments')
+    .select('id, transaction_id, amount_paid, paid_at')
+    .eq('user_id', userId)
+    .returns<DebtPayment[]>()
+
+  const payments = dpData || []
+  const txById = new Map(txData.map(t => [t.id, t]))
+
+  const now = phNowParts()
+  const yesterdayParts = toPhDateParts(new Date(Date.now() - 86400000).toISOString())
 
   let today = 0, yesterday = 0, month = 0, year = 0
   let unpaidToday = 0, unpaidYesterday = 0, unpaidMonth = 0, unpaidYear = 0
   let gallons = 0
-  
+
   const breakdown: GallonBreakdown = {
     '1gal': { quantity: 0, amount: 0 },
     '2.5gal': { quantity: 0, amount: 0 },
     '5gal': { quantity: 0, amount: 0 },
   }
 
-  for (const t of data) {
-    const d = new Date(t.created_at)
-    
-    // Calculate PAID amount (what's actually been collected)
-    let paidAmt = 0
-    if (t.payment_status === 'paid') {
-      // For old transactions with amount_paid = 0, use total_amount
-      if (Number(t.amount_paid) === 0) {
-        paidAmt = Number(t.total_amount)
-      } else {
-        paidAmt = Number(t.amount_paid)
-      }
-    } else if (t.payment_status === 'partial') {
-      paidAmt = Number(t.amount_paid)
-    } else {
-      paidAmt = 0 // utang - no money collected
+
+  for (const p of payments) {
+    const tx = txById.get(p.transaction_id)
+    if (!tx) continue
+
+    const paidParts = toPhDateParts(p.paid_at)
+    const amt = Number(p.amount_paid)
+
+    if (paidParts.dateKey === now.dateKey) today += amt
+    if (paidParts.dateKey === yesterdayParts.dateKey) yesterday += amt
+    if (paidParts.month === now.month && paidParts.year === now.year) month += amt
+    if (paidParts.year === now.year) year += amt
+
+    const key = tx.gallon_type as keyof GallonBreakdown
+    if (breakdown[key]) {
+      breakdown[key].amount += amt
     }
-    
-    // Calculate UNPAID amount (still owed)
+  }
+
+  // Gallons sold and unpaid (utang/partial balance) are still tracked by the
+  // sale's created_at — that reflects "how many gallons went out the door"
+  // and "how much is currently owed", which are correctly dated by when the
+  // sale itself happened, not when (or if) it gets paid.
+  for (const t of txData) {
+    const createdParts = toPhDateParts(t.created_at)
+    const qty = Number(t.quantity)
+
     let unpaidAmt = 0
     if (t.payment_status === 'utang') {
       unpaidAmt = Number(t.total_amount)
     } else if (t.payment_status === 'partial') {
       unpaidAmt = Number(t.balance_due)
     }
-    
-    const qty = Number(t.quantity)
 
-    if (d.toDateString() === todayStr) {
-      today += paidAmt
-      unpaidToday += unpaidAmt
-    }
-    if (d.toDateString() === yesterdayStr) {
-      yesterday += paidAmt
-      unpaidYesterday += unpaidAmt
-    }
-    if (d.getMonth() === thisMonth && d.getFullYear() === thisYear) {
-      month += paidAmt
-      unpaidMonth += unpaidAmt
-    }
-    if (d.getFullYear() === thisYear) {
-      year += paidAmt
-      unpaidYear += unpaidAmt
-    }
+    if (createdParts.dateKey === now.dateKey) unpaidToday += unpaidAmt
+    if (createdParts.dateKey === yesterdayParts.dateKey) unpaidYesterday += unpaidAmt
+    if (createdParts.month === now.month && createdParts.year === now.year) unpaidMonth += unpaidAmt
+    if (createdParts.year === now.year) unpaidYear += unpaidAmt
 
     gallons += qty
 
     const key = t.gallon_type as keyof GallonBreakdown
     if (breakdown[key]) {
       breakdown[key].quantity += qty
-      breakdown[key].amount += paidAmt
     }
   }
 

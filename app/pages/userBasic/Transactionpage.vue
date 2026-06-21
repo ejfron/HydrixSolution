@@ -62,7 +62,7 @@
               </p>
             </div>
             <p class="text-2xl font-black text-green-600 mt-1">{{ formatPeso(getTabPaidTotal(activeTab)) }}</p>
-            <p class="text-xs text-slate-400 mt-1 flex items-center gap-1"><CheckCircle :size="12" /> {{ getTabPaidCount(activeTab) }} fully paid transactions</p>
+            <p class="text-xs text-slate-400 mt-1 flex items-center gap-1"><CheckCircle :size="12" /> {{ getTabPaidCount(activeTab) }} fully paid · collected in selected range</p>
           </div>
           <div :class="['rounded-2xl border px-6 py-4', getTabUnpaidTotal(activeTab) > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-100']">
             <div class="flex items-center gap-2 mb-1">
@@ -374,7 +374,7 @@
                     <button v-if="debtor.payment_status !== 'paid' && debtor.balance_due > 0"
                       @click="paySavedDebtor(idx)"
                       class="w-full py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1">
-                      <Banknote :size="12" /> Pay {{ formatPeso(debtor.balance_due) }}
+                      <Banknote :size="12" /> Pay ₱{{ formatPeso(debtor.balance_due) }}
                     </button>
                   </div>
                   
@@ -394,7 +394,7 @@
                     </div>
                     <button @click="payNewDebtor(idx)" 
                       class="w-full py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1">
-                      <Banknote :size="12" /> Pay {{ formatPeso(debtor.amount) }}
+                      <Banknote :size="12" /> Pay ₱{{ formatPeso(debtor.amount) }}
                     </button>
                   </div>
 
@@ -587,7 +587,7 @@
                 <button v-if="debtor.payment_status !== 'paid' && debtor.balance_due > 0"
                   @click="payDebtorFromList(debtor)"
                   class="w-full mt-3 py-1.5 bg-green-500 hover:bg-green-600 text-white rounded-lg text-xs font-bold transition cursor-pointer flex items-center justify-center gap-1">
-                  <Banknote :size="12" /> Pay {{ formatPeso(debtor.balance_due) }}
+                  <Banknote :size="12" /> Pay ₱{{ formatPeso(debtor.balance_due) }}
                 </button>
               </div>
             </div>
@@ -620,12 +620,12 @@ import {
   AlertTriangle, Ban, Clock, User, Users, UserX, Calendar, DollarSign, Droplets,
   Banknote, FileText, Loader, Hash, Inbox, Minus, Plus, UserPlus, Save
 } from '@lucide/vue'
-import Navbar from '~/components/userBasic/Navbar.vue'
-import Sidebar from '~/components/userBasic/Sidebar.vue'
-import ChooseEdit from '~/components/userBasic/ChooseEdit.vue'
-import EditTransactionModal from '~/components/userBasic/EditTransactionModal.vue'
-import PasscodeVerify from '~/components/userBasic/PasscodeVerify.vue'
-import PasscodeSetup from '~/components/userBasic/PasscodeSetup.vue'
+import Navbar from '~/components/userPremium/Navbar.vue'
+import Sidebar from '~/components/userPremium/Sidebar.vue'
+import ChooseEdit from '~/components/userPremium/ChooseEdit.vue'
+import EditTransactionModal from '~/components/userPremium/EditTransactionModal.vue'
+import PasscodeVerify from '~/components/userPremium/PasscodeVerify.vue'
+import PasscodeSetup from '~/components/userPremium/PasscodeSetup.vue'
 import { useRoute } from '#app'
 
 const client = useSupabaseClient() as any
@@ -682,6 +682,14 @@ type Rider = {
   name: string
 }
 
+type DebtPayment = {
+  id: string
+  transaction_id: string
+  amount_paid: number
+  paid_at: string
+  note: string | null
+}
+
 interface NewDebtorEntry {
   name: string
   gallons: number
@@ -689,6 +697,7 @@ interface NewDebtorEntry {
 }
 
 const transactions = ref<Transaction[]>([])
+const debtPayments = ref<DebtPayment[]>([])
 const riders = ref<Rider[]>([])
 const loading = ref(true)
 const activeTab = ref<string>('all')
@@ -792,6 +801,12 @@ const fetchAll = async () =>
     .eq('user_id', userId)
     .order('created_at', { ascending: false })
   if (txData) transactions.value = txData as Transaction[]
+  const { data: dpData } = await client
+    .from('debt_payments')
+    .select('*')
+    .eq('user_id', userId)
+    .order('paid_at', { ascending: false })
+  if (dpData) debtPayments.value = dpData as DebtPayment[]
   const { data: riderData } = await client
     .from('delivery_riders')
     .select('id, name')
@@ -1032,13 +1047,14 @@ const payNewDebtor = async (index: number) =>
     const newAmountPaid = Number(tx.amount_paid) + debtor.amount
     const newBalance = Math.max(0, Number(tx.total_amount) - newAmountPaid)
     const newStatus = newBalance <= 0 ? 'paid' : 'partial'
-    await client.from('debt_payments').insert({
+    const { data: dpInserted } = await client.from('debt_payments').insert({
       transaction_id: tx.id,
       user_id: userId,
       amount_paid: debtor.amount,
       note: `Payment for ${debtor.name}`,
       paid_at: new Date().toISOString()
-    })
+    }).select().single()
+    if (dpInserted) debtPayments.value = [dpInserted as DebtPayment, ...debtPayments.value]
     await client.from('transactions').update({
       amount_paid: newAmountPaid,
       balance_due: newBalance,
@@ -1064,7 +1080,7 @@ const payNewDebtor = async (index: number) =>
       payment_status: newStatus
     }
     payingDebt.value = false
-    showToastMessage(`${formatPeso(debtor.amount)} paid for ${debtor.name}!`, 'success')
+    showToastMessage(`₱${formatPeso(debtor.amount)} paid for ${debtor.name}!`, 'success')
   }
   catch (err: any)
   {
@@ -1090,13 +1106,14 @@ const processDebtorPayment = async (debtorId: string, debtorName: string, payAmo
       balance_due: 0,
       payment_status: 'paid'
     }).eq('id', debtorId)
-    await client.from('debt_payments').insert({
+    const { data: dpInserted } = await client.from('debt_payments').insert({
       transaction_id: tx.id,
       user_id: userId,
       amount_paid: payAmount,
       note: `Payment for ${debtorName}`,
       paid_at: new Date().toISOString()
-    })
+    }).select().single()
+    if (dpInserted) debtPayments.value = [dpInserted as DebtPayment, ...debtPayments.value]
     await client.from('transactions').update({
       amount_paid: newAmountPaid,
       balance_due: newBalance,
@@ -1121,7 +1138,7 @@ const processDebtorPayment = async (debtorId: string, debtorName: string, payAmo
       payment_status: newStatus
     }
     payingDebt.value = false
-    showToastMessage(`${formatPeso(payAmount)} paid for ${debtorName}!`, 'success')
+    showToastMessage(`₱${formatPeso(payAmount)} paid for ${debtorName}!`, 'success')
   }
   catch (err: any)
   {
@@ -1185,13 +1202,14 @@ const processQuickPay = async () =>
       note: 'Quick payment'
     })
     
-    await client.from('debt_payments').insert({
+    const { data: dpInserted } = await client.from('debt_payments').insert({
       transaction_id: tx.id,
       user_id: userId,
       amount_paid: payAmount,
       note: 'Quick payment',
       paid_at: new Date().toISOString()
-    })
+    }).select().single()
+    if (dpInserted) debtPayments.value = [dpInserted as DebtPayment, ...debtPayments.value]
     
     await client.from('transactions').update({
       amount_paid: newAmountPaid,
@@ -1208,7 +1226,7 @@ const processQuickPay = async () =>
     
     showQuickPayModal.value = false
     payingDebt.value = false
-    showToastMessage(`${formatPeso(payAmount)} paid${isNowFullyPaid ? '! Transaction fully paid.' : `! ${formatPeso(newBalance)} remaining.`}`, 'success')
+    showToastMessage(`₱${formatPeso(payAmount)} paid${isNowFullyPaid ? '! Transaction fully paid.' : `! ${formatPeso(newBalance)} remaining.`}`, 'success')
   }
   catch (err: any)
   {
@@ -1241,12 +1259,11 @@ const openActionModal = (tx: Transaction) =>
   showActionModal.value = true
 }
 
-const getTabTransactions = (tabId: string) =>
+const filteredTransactions = computed(() =>
 {
-  if (tabId === 'all') return transactions.value
-  if (tabId === 'unassigned') return transactions.value.filter(t => !t.rider_id)
-  return transactions.value.filter(t => t.rider_id === tabId)
-}
+  const tabTxs = getTabTransactions(activeTab.value)
+  return applyDateFilter(tabTxs)
+})
 
 const applyDateFilter = (list: Transaction[]) =>
 {
@@ -1266,34 +1283,67 @@ const applyDateFilter = (list: Transaction[]) =>
   return filtered
 }
 
-// FIXED: Get paid total - handles old transactions correctly
+const getTabTransactions = (tabId: string) =>
+{
+  if (tabId === 'all') return transactions.value
+  if (tabId === 'unassigned') return transactions.value.filter(t => !t.rider_id)
+  return transactions.value.filter(t => t.rider_id === tabId)
+}
+
+// Date-filtered collected revenue — respects startDate/endDate so picking a
+// range (e.g. June 12, 2026 to June 13, 2026) changes the "Total Revenue" card
+// to only reflect money collected within that window.
+// Uses the same collection logic as the Sales page:
+// - 'paid'    -> full total_amount (fallback if amount_paid wasn't backfilled)
+// - 'partial' -> only the amount_paid portion collected so far
+// - 'utang'   -> ₱0
 const getTabPaidTotal = (tabId: string) =>
 {
   const txs = applyDateFilter(getTabTransactions(tabId))
-  return txs.reduce((s, t) => {
-    // For old transactions (payment_status is 'paid' but amount_paid is 0)
-    // use total_amount instead
-    if (t.payment_status === 'paid' && Number(t.amount_paid) === 0) {
-      return s + Number(t.total_amount)
-    }
-    // For new transactions, use amount_paid
-    return s + Number(t.amount_paid)
-  }, 0)
+  return txs.reduce((s, t) => s + getCollectedAmount(t), 0)
 }
 
-// FIXED: Get paid count - counts transactions that are considered paid
 const getTabPaidCount = (tabId: string) =>
 {
   const txs = applyDateFilter(getTabTransactions(tabId))
-  return txs.filter(t => {
-    if (t.payment_status === 'paid') return true
-    // Also count old transactions that have amount_paid === 0 but were marked as paid
-    if (t.payment_status === 'paid' && Number(t.amount_paid) === 0) return true
-    return false
-  }).length
+  return txs.filter(t => t.payment_status === 'paid').length
 }
 
-// Get unpaid total (utang + partial balance)
+// All-time collected revenue — mirrors the Sales page exactly:
+// - only counts rows where status === 'completed' (same .eq('status','completed')
+//   filter the Sales page uses), otherwise the two pages will never agree
+// - 'paid'    -> full total_amount counts (fallback to total_amount if amount_paid
+//                wasn't backfilled on older rows)
+// - 'partial' -> only the amount_paid portion counts (money actually collected)
+// - 'utang'   -> ₱0, nothing has been collected yet
+// Ignores startDate/endDate so it always reflects every peso collected,
+// old to new, regardless of whatever date range is selected above.
+const getCollectedAmount = (t: Transaction) =>
+{
+  if (t.status !== 'completed') return 0
+  if (t.payment_status === 'paid')
+  {
+    return Number(t.amount_paid) === 0 ? Number(t.total_amount) : Number(t.amount_paid)
+  }
+  if (t.payment_status === 'partial')
+  {
+    return Number(t.amount_paid)
+  }
+  return 0
+}
+
+const getTabPaidTotalAllTime = (tabId: string) =>
+{
+  const txs = getTabTransactions(tabId)
+  return txs.reduce((s, t) => s + getCollectedAmount(t), 0)
+}
+
+const getTabPaidCountAllTime = (tabId: string) =>
+{
+  const txs = getTabTransactions(tabId)
+  return txs.filter(t => t.payment_status === 'paid' && t.status === 'completed').length
+}
+
 const getTabUnpaidTotal = (tabId: string) =>
 {
   const txs = applyDateFilter(getTabTransactions(tabId))
@@ -1302,25 +1352,17 @@ const getTabUnpaidTotal = (tabId: string) =>
     .reduce((s, t) => s + Number(t.balance_due), 0)
 }
 
-// Get unpaid count
 const getTabUnpaidCount = (tabId: string) =>
 {
   const txs = applyDateFilter(getTabTransactions(tabId))
   return txs.filter(t => t.payment_status === 'utang' || t.payment_status === 'partial').length
 }
 
-// Get total amount (for reference)
 const getTabTotal = (tabId: string) =>
 {
   const txs = applyDateFilter(getTabTransactions(tabId))
   return txs.reduce((s, t) => s + Number(t.total_amount), 0)
 }
-
-const filteredTransactions = computed(() =>
-{
-  const tabTxs = getTabTransactions(activeTab.value)
-  return applyDateFilter(tabTxs)
-})
 
 const getTabCount = (tabId: string) =>
 {

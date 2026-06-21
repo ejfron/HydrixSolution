@@ -3,6 +3,9 @@ declare const process: {
     NUXT_PUBLIC_SUPABASE_URL?: string
     NUXT_PUBLIC_SUPABASE_KEY?: string
     SUPABASE_SERVICE_ROLE_KEY?: string
+    PAYMONGO_SECRET_KEY?: string
+    PAYMONGO_WEBHOOK_SECRET?: string
+    PAYMONGO_PUBLIC_KEY?: string
     SUPABASE_URL?: string
     NODE_ENV?: string
   }
@@ -11,6 +14,16 @@ declare const process: {
 export default defineNuxtConfig({
   compatibilityDate: '2025-07-15',
   devtools: { enabled: false },
+
+  nitro: {
+    typescript: {
+      tsConfig: {
+        compilerOptions: {
+          types: ['node']
+        }
+      }
+    }
+  },
 
   modules: [
     '@nuxt/ui',
@@ -36,13 +49,16 @@ export default defineNuxtConfig({
   },
 
   runtimeConfig: {
-    // ── FIXED: these names must exactly match useRuntimeConfig() ──
+ 
     supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
     supabaseUrl: process.env.SUPABASE_URL,
+    paymongoSecretKey: process.env.PAYMONGO_SECRET_KEY,     
+  paymongoWebhookSecret: process.env.PAYMONGO_WEBHOOK_SECRET, 
 
     public: {
       supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL,
       supabaseKey: process.env.NUXT_PUBLIC_SUPABASE_KEY,
+      paymongoPublicKey: process.env.PAYMONGO_PUBLIC_KEY,  
     }
   },
 

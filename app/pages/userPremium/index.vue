@@ -4,9 +4,8 @@ import { useSupabaseClient, useSupabaseUser } from '#imports'
 import { PhilippinePeso, Droplets, TrendingUp, ReceiptText } from '@lucide/vue'
 import Navbar from '~/components/userPremium/Navbar.vue'
 import Sidebar from '~/components/userPremium/Sidebar.vue'
-import { useSubscription } from '~/composables/useSubscription'
 
-// Updated Transaction type with payment fields
+
 type Transaction = {
   id: string
   gallon_type: string
@@ -20,6 +19,13 @@ type Transaction = {
   created_at: string
 }
 
+type DebtPayment = {
+  id: string
+  transaction_id: string
+  amount_paid: number
+  paid_at: string
+}
+
 const client = useSupabaseClient()
 const user = useSupabaseUser()
 const { isExpired, daysRemaining, nextPaymentDate, checkSubscription } = useSubscription()
@@ -27,16 +33,39 @@ const { isExpired, daysRemaining, nextPaymentDate, checkSubscription } = useSubs
 const stats = ref({ today: 0, thisMonth: 0, totalSales: 0, totalTransactions: 0 })
 const recentTransactions = ref<Transaction[]>([])
 
+// Philippines is UTC+8 with no DST. Comparing toDateString()/getMonth()/
+// getFullYear() directly uses the BROWSER/SERVER's local timezone, which may
+// not be Philippine time — causing collections made in the early Philippine
+// morning to land under "yesterday" instead of "today". This helper converts
+// any UTC timestamp into its Philippine-time calendar date/month/year so all
+// comparisons are anchored to Manila time regardless of server/browser TZ.
+const PH_OFFSET_MS = 8 * 60 * 60 * 1000
+
+const toPhDateParts = (isoString: string) => {
+  const utcMs = new Date(isoString).getTime()
+  const ph = new Date(utcMs + PH_OFFSET_MS)
+  return {
+    dateKey: `${ph.getUTCFullYear()}-${String(ph.getUTCMonth() + 1).padStart(2, '0')}-${String(ph.getUTCDate()).padStart(2, '0')}`,
+    month: ph.getUTCMonth(),
+    year: ph.getUTCFullYear()
+  }
+}
+
+const phNowParts = () => toPhDateParts(new Date().toISOString())
+
 const fetchDashboard = async () => {
   const { data: { session } } = await client.auth.getSession()
   const userId = user.value?.id ?? session?.user?.id
   if (!userId) return
 
+  // NOTE: no .eq('status', 'completed') filter here — this was previously
+  // hiding any transaction whose status isn't exactly 'completed'. The
+  // Transactions page never filtered by status, so this dashboard matches
+  // that behavior to ensure new dispenses always appear immediately.
   const { data } = await client
     .from('transactions')
     .select('*')
     .eq('user_id', userId)
-    .eq('status', 'completed')
     .order('created_at', { ascending: false })
     .returns<Transaction[]>()
 
@@ -44,32 +73,29 @@ const fetchDashboard = async () => {
 
   recentTransactions.value = data.slice(0, 5)
 
-  const now = new Date()
+  const { data: dpData } = await client
+    .from('debt_payments')
+    .select('id, transaction_id, amount_paid, paid_at')
+    .eq('user_id', userId)
+    .returns<DebtPayment[]>()
+
+  const payments = dpData || []
+  const now = phNowParts()
+
   let today = 0, month = 0, total = 0
 
-  for (const t of data) {
-    const d = new Date(t.created_at)
-    
-    // Calculate ONLY collected amount (exclude unpaid/utang)
-    let collectedAmount = 0
-    
-    if (t.payment_status === 'paid') {
-      // For paid transactions - use amount_paid (or total_amount for old records)
-      collectedAmount = Number(t.amount_paid) || Number(t.total_amount)
-    } else if (t.payment_status === 'partial') {
-      // For partial payments - only count what was actually paid
-      collectedAmount = Number(t.amount_paid) || 0
-    } else if (t.payment_status === 'utang') {
-      // For unpaid utang - count 0 (no money collected)
-      collectedAmount = 0
-    } else {
-      // For old transactions without payment_status, assume they are paid
-      collectedAmount = Number(t.total_amount)
-    }
-    
-    total += collectedAmount
-    if (d.toDateString() === now.toDateString()) today += collectedAmount
-    if (d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()) month += collectedAmount
+  // Collections are counted on the date money was actually COLLECTED
+  // (debt_payments.paid_at), not the date the sale was created. This
+  // mirrors Transactions/Sales/Reports: a utang from an earlier day that
+  // gets paid off today counts toward today's collections, not the day
+  // the original sale happened.
+  for (const p of payments) {
+    const amt = Number(p.amount_paid)
+    const paidParts = toPhDateParts(p.paid_at)
+
+    total += amt
+    if (paidParts.dateKey === now.dateKey) today += amt
+    if (paidParts.month === now.month && paidParts.year === now.year) month += amt
   }
 
   stats.value = { 
@@ -105,6 +131,7 @@ const getPaymentLabel = (paymentStatus: string) => {
   return 'Completed'
 }
 
+
 const getCollectedAmount = (transaction: Transaction) => {
   if (transaction.payment_status === 'paid') {
     return Number(transaction.amount_paid) || Number(transaction.total_amount)
@@ -119,11 +146,20 @@ const getCollectedAmount = (transaction: Transaction) => {
 const formatDate = (d: string) =>
   new Date(d).toLocaleString('en-PH', {
     month: 'short', day: 'numeric',
-    hour: '2-digit', minute: '2-digit'
+    hour: '2-digit', minute: '2-digit',
+    timeZone: 'Asia/Manila'
   })
 
 onMounted(async () => {
   await checkSubscription()
+  await fetchDashboard()
+})
+
+// Refetch every time this page becomes active again (e.g. navigating back
+// from Dispense after creating a sale), not just on the very first mount.
+// Without this, a cached component instance can keep showing stale data
+// until a full browser reload.
+onActivated(async () => {
   await fetchDashboard()
 })
 </script>
