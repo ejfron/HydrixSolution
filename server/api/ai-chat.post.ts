@@ -1073,7 +1073,7 @@ export default defineEventHandler(async (event) => {
     }
   }
 
-  console.log('[ai-chat] Authentication status:', { isAuthenticated, userId })
+
 
   const body = await readBody<{ 
     message: string; 

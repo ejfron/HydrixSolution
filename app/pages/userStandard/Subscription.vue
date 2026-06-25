@@ -58,13 +58,13 @@ const paymentHistory = ref<PaymentHistory[]>([])
 const loading = ref(true)
 
 const SETUP_FEE: Record<string, number> = {
-  basic: 1499,
-  standard: 4449,
+  basic: 599,
+  standard: 1199,
   premium: 80000,
 }
 const MONTHLY_FEE: Record<string, number> = {
-  basic: 300,
-  standard: 400,
+  basic: 449,
+  standard: 649,
   premium: 0,
 }
 
@@ -217,7 +217,7 @@ onMounted(() => fetchData())
                 <AlertCircle :size="18" class="text-red-500" />
                 <div>
                   <p class="text-sm font-bold text-red-700">Payment Overdue</p>
-                  <p class="text-xs text-red-500">Your access is restricted. Please pay ₱400 to continue.</p>
+                  <p class="text-xs text-red-500">Your access is restricted. Please pay ₱650 to continue.</p>
                 </div>
               </div>
               <a href="https://www.facebook.com/ej.fron16" target="_blank"
@@ -246,7 +246,7 @@ onMounted(() => fetchData())
               <div>
                 <p class="text-sm font-bold text-green-700">Subscription Active</p>
                 <p class="text-xs text-green-600">
-                  Next payment of ₱400 due on {{ profile.next_payment_date ? formatDate(profile.next_payment_date) : '—' }}
+                  Next payment of ₱649 due on {{ profile.next_payment_date ? formatDate(profile.next_payment_date) : '—' }}
                 </p>
               </div>
             </div>
@@ -295,7 +295,7 @@ onMounted(() => fetchData())
 
             <!-- How to Pay Footer -->
             <div class="px-6 py-4 bg-slate-50 border-t border-slate-100">
-              <p class="text-xs text-slate-500 font-semibold mb-1">How to pay your monthly ₱400:</p>
+              <p class="text-xs text-slate-500 font-semibold mb-1">How to pay your monthly ₱649:</p>
               <p class="text-xs text-slate-400">Message us on Facebook or GCash to record your payment. Admin will update your account within 24 hours.</p>
               
                 <div class="flex gap-2">
@@ -305,7 +305,7 @@ onMounted(() => fetchData())
                   class="px-4 py-2 mt-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1"
                 >
                   <span v-if="paying">Processing...</span>
-                  <span v-else">Pay via GCash ₱400</span>
+                  <span v-else">Pay via GCash ₱649</span>
                 </button>
 
 
