@@ -58,13 +58,13 @@ const paymentHistory = ref<PaymentHistory[]>([])
 const loading = ref(true)
 
 const SETUP_FEE: Record<string, number> = {
-  basic: 2500,
-  standard: 5000,
+  basic: 1499,
+  standard: 4499,
   premium: 80000,
 }
 const MONTHLY_FEE: Record<string, number> = {
   basic: 300,
-  standard: 500,
+  standard: 400,
   premium: 0,
 }
 
@@ -217,7 +217,7 @@ onMounted(() => fetchData())
                 <AlertCircle :size="18" class="text-red-500" />
                 <div>
                   <p class="text-sm font-bold text-red-700">Payment Overdue</p>
-                  <p class="text-xs text-red-500">Your access is restricted. Please pay ₱500 to continue.</p>
+                  <p class="text-xs text-red-500">Your access is restricted. Please pay ₱300 to continue.</p>
                 </div>
               </div>
               <a href="https://www.facebook.com/ej.fron16" target="_blank"
@@ -246,7 +246,7 @@ onMounted(() => fetchData())
               <div>
                 <p class="text-sm font-bold text-green-700">Subscription Active</p>
                 <p class="text-xs text-green-600">
-                  Next payment of ₱500 due on {{ profile.next_payment_date ? formatDate(profile.next_payment_date) : '—' }}
+                  Next payment of ₱300 due on {{ profile.next_payment_date ? formatDate(profile.next_payment_date) : '—' }}
                 </p>
               </div>
             </div>
@@ -295,7 +295,7 @@ onMounted(() => fetchData())
 
             <!-- How to Pay Footer -->
             <div class="px-6 py-4 bg-slate-50 border-t border-slate-100">
-              <p class="text-xs text-slate-500 font-semibold mb-1">How to pay your monthly ₱500:</p>
+              <p class="text-xs text-slate-500 font-semibold mb-1">How to pay your monthly ₱300:</p>
               <p class="text-xs text-slate-400">Message us on Facebook or GCash to record your payment. Admin will update your account within 24 hours.</p>
                 <button
                   @click="handlePay"
@@ -303,7 +303,7 @@ onMounted(() => fetchData())
                   class="px-4 py-2  mt-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-xl text-xs font-bold transition whitespace-nowrap flex items-center gap-1"
                 >
                   <span v-if="paying">Processing...</span>
-                  <span v-else">Pay via GCash ₱500</span>
+                  <span v-else">Pay via GCash ₱300</span>
                 </button>
 
                <p v-if="payError" class="text-xs text-red-500 mt-2">{{ payError }}</p>

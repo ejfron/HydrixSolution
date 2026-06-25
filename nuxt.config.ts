@@ -8,6 +8,8 @@ declare const process: {
     PAYMONGO_PUBLIC_KEY?: string
     SUPABASE_URL?: string
     NODE_ENV?: string
+    GEMINI_API_KEY?: string
+
   }
 }
 
@@ -54,6 +56,7 @@ export default defineNuxtConfig({
     supabaseUrl: process.env.SUPABASE_URL,
     paymongoSecretKey: process.env.PAYMONGO_SECRET_KEY,     
   paymongoWebhookSecret: process.env.PAYMONGO_WEBHOOK_SECRET, 
+   geminiApiKey: process.env.GEMINI_API_KEY,
 
     public: {
       supabaseUrl: process.env.NUXT_PUBLIC_SUPABASE_URL,

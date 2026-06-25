@@ -2,6 +2,7 @@
 definePageMeta({ middleware: ['auth'] })
 import { useSupabaseClient, useSupabaseUser } from '#imports'
 import { PhilippinePeso, Droplets, TrendingUp, ReceiptText } from '@lucide/vue'
+import SalesAssistant from '~/components/shared/SalesAssistant.vue'
 import Navbar from '~/components/userBasic/Navbar.vue'
 import Sidebar from '~/components/userBasic/Sidebar.vue'
 import { useSubscription } from '~/composables/useSubscription'
@@ -132,10 +133,6 @@ const getPaymentLabel = (paymentStatus: string) => {
   return 'Completed'
 }
 
-// Still used in the Recent Transactions table to show what's been collected
-// per-row so far (based on the transaction's current amount_paid). This is
-// fine for a per-row display, since it's not being summed into the date-based
-// dashboard stats above — those now come from the debt_payments ledger.
 const getCollectedAmount = (transaction: Transaction) => {
   if (transaction.payment_status === 'paid') {
     return Number(transaction.amount_paid) || Number(transaction.total_amount)
@@ -321,7 +318,7 @@ onActivated(async () => {
             </table>
           </div>
         </div>
-
+        <!-- <SalesAssistant /> -->
       </div>
     </main>
   </div>

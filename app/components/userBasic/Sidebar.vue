@@ -2,7 +2,7 @@
 import {
   Home, Building2, ReceiptText,
   BarChart3, LogOut, Droplets,
-  PanelLeftClose, PanelLeftOpen, Users2, HandCoins, Bike, MessageCircle, MessageCircleQuestionMark, X
+  PanelLeftClose, PanelLeftOpen, Users2, HandCoins, Bike, MessageCircle, MessageCircleQuestionMark
 } from '@lucide/vue'
 import { useRoute } from '#app'
 import { useSidebarState } from '~/composables/useSidebarState'
@@ -16,10 +16,9 @@ const { isMobileSidebarOpen, closeMobileSidebar } = useSidebarState()
 const OpenSidebar = ref(true)
 const OpenSidebarMenu = () => OpenSidebar.value = !OpenSidebar.value
 
-// Normalize path for comparison (remove trailing slash, ensure consistency)
+// Normalize path for comparison
 const isActive = (path: string) => {
   const currentPath = route.path
-  // Normalize both paths by removing trailing slash if exists
   const normalizedCurrent = currentPath.endsWith('/') ? currentPath.slice(0, -1) : currentPath
   const normalizedPath = path.endsWith('/') ? path.slice(0, -1) : path
 
@@ -33,49 +32,49 @@ const handleLogout = async () => {
   router.push('/loginpage')
 }
 
-// FIX: Make sure paths match exactly with your actual routes
+// Main menu items for desktop sidebar - BASIC
 const mainMenu = [
   { name: 'Dashboard', path: '/userBasic', icon: Home },
-  { name: 'DispensePage', path: '/userBasic/dispense', icon: Droplets }, // lowercase d
-  { name: 'Salespage', path: '/userBasic/salespage', icon: Building2 }, // lowercase s
-  { name: 'Riders', path: '/userBasic/riders', icon: Bike }, // lowercase r
-  { name: 'Transactions', path: '/userBasic/transactionpage', icon: ReceiptText }, // lowercase t
-  { name: 'Reports', path: '/userBasic/reports', icon: BarChart3 }, // lowercase r
-  { name: 'Workers', path: '/userBasic/workers', icon: Users2 }, // lowercase w
-  { name: 'Subscription', path: '/userBasic/subscription', icon: HandCoins }, // lowercase s
-  { name: 'ChatUser', path: '/userBasic/chatuser', icon: MessageCircle }, // lowercase c
-  { name: 'HelpGuide', path: '/userBasic/HelpGuide', icon: MessageCircleQuestionMark }
+  { name: 'DispensePage', path: '/userBasic/dispense', icon: Droplets },
+  { name: 'Salespage', path: '/userBasic/salespage', icon: Building2 },
+  { name: 'Riders', path: '/userBasic/riders', icon: Bike },
+  { name: 'Transactions', path: '/userBasic/transactionpage', icon: ReceiptText },
+  { name: 'Reports', path: '/userBasic/reports', icon: BarChart3 },
+  { name: 'Workers', path: '/userBasic/workers', icon: Users2 },
+  { name: 'Subscription', path: '/userBasic/subscription', icon: HandCoins },
+  { name: 'ChatUser', path: '/userBasic/chatuser', icon: MessageCircle },
+  { name: 'HelpGuide', path: '/userBasic/HelpGuide', icon: MessageCircleQuestionMark },
 ]
 
-// Close the mobile sidebar automatically after navigating, so tapping a
-// link doesn't leave the panel open over the new page.
+// Mobile bottom navigation items - BASIC
+const bottomNavItems = [
+  { name: 'Dashboard', path: '/userBasic', icon: Home },
+  { name: 'Dispense', path: '/userBasic/dispense', icon: Droplets },
+  { name: 'Sales', path: '/userBasic/salespage', icon: Building2 },
+  { name: 'Riders', path: '/userBasic/riders', icon: Bike },
+  { name: 'Transactions', path: '/userBasic/transactionpage', icon: ReceiptText },
+  { name: 'Reports', path: '/userBasic/reports', icon: BarChart3 },
+  { name: 'Customers', path: '/userBasic/workers', icon: Users2 },
+  { name: 'Subscription', path: '/userBasic/subscription', icon: HandCoins },
+  { name: 'Chat', path: '/userBasic/chatuser', icon: MessageCircle },
+  { name: 'Help', path: '/userBasic/HelpGuide', icon: MessageCircleQuestionMark },
+]
+
 watch(() => route.path, () => {
   closeMobileSidebar()
 })
 
 onMounted(() => {
   fetchProfile()
-  console.log('Current route:', route.path) // Debug: check what route you're on
+  console.log('Current route:', route.path)
 })
 </script>
 
 <template>
-  <!--
-    Mobile (below md): the sidebar is taken out of the document flow (fixed)
-    and translated off-screen by default. Toggling isMobileSidebarOpen (via
-    the hamburger button in Navbar.vue) slides it in. A matching spacer div
-    (below) pushes the page content to the side when open, rather than
-    overlaying with a backdrop.
-
-    Desktop (md and up): behaves exactly as before — sticky, always visible,
-    collapsible to an icon-only rail via the PanelLeftClose/Open toggle.
-  -->
+  <!-- Desktop Sidebar (hidden on mobile) -->
   <aside
     :class="[
-      'h-screen top-0 shrink-0 bg-green-600 border-r border-white/10 text-white flex flex-col transition-all duration-300 z-40',
-      'fixed md:sticky',
-      isMobileSidebarOpen ? 'translate-x-0' : '-translate-x-full',
-      'md:translate-x-0',
+      'hidden md:flex h-screen top-0 shrink-0 bg-green-600 border-r border-white/10 text-white flex-col transition-all duration-300 z-40 sticky',
       OpenSidebar ? 'w-55 md:w-67.5' : 'w-55 md:w-19.5'
     ]"
   >
@@ -92,12 +91,12 @@ onMounted(() => {
               <h1 class="font-semibold text-xs sm:text-sm">
                 {{ profile?.station_name || 'My Station' }}
               </h1>
-              <p class="text-[10px] sm:text-xs text-gray-100 truncate">Water Station System</p>
+              <p class="text-[10px] sm:text-xs text-gray-100 truncate">Basic Plan</p>
             </div>
           </Transition>
         </div>
 
-        <!-- Desktop collapse toggle (hidden on mobile, mobile uses the X below) -->
+        <!-- Desktop collapse toggle -->
         <button
           @click="OpenSidebarMenu"
           :class="[
@@ -107,14 +106,6 @@ onMounted(() => {
         >
           <PanelLeftClose v-if="OpenSidebar" class="w-4 h-4 sm:w-5 sm:h-5 text-gray-100" />
           <PanelLeftOpen v-else class="w-4 h-4 sm:w-5 sm:h-5" />
-        </button>
-
-        <!-- Mobile close button -->
-        <button
-          @click="closeMobileSidebar"
-          class="md:hidden cursor-pointer p-2 rounded-lg text-gray-100 hover:bg-white/10 transition"
-        >
-          <PanelLeftClose class="w-5 h-5" />
         </button>
       </div>
 
@@ -145,7 +136,6 @@ onMounted(() => {
             </Transition>
           </NuxtLink>
         </div>
-
       </div>
     </div>
 
@@ -163,12 +153,40 @@ onMounted(() => {
     </div>
   </aside>
 
+  <!-- Mobile Bottom Navigation -->
+  <div class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-50 shadow-lg">
+    <div class="overflow-x-auto scrollbar-hide">
+      <div class="flex items-center h-16 px-2 gap-1 min-w-max">
+        <NuxtLink
+          v-for="item in bottomNavItems"
+          :key="item.path"
+          :to="item.path"
+          class="flex flex-col items-center justify-center gap-0.5 px-3 py-1 rounded-lg transition-all duration-200 relative shrink-0"
+          :class="[
+            isActive(item.path) 
+              ? 'text-green-600' 
+              : 'text-slate-400 hover:text-slate-600'
+          ]"
+        >
+          <div 
+            v-if="isActive(item.path)" 
+            class="absolute -top-0.5 left-1/2 transform -translate-x-1/2 w-6 h-0.5 bg-green-600 rounded-full"
+          ></div>
+          <component :is="item.icon" class="w-5 h-5" />
+          <span class="text-[10px] font-medium whitespace-nowrap">{{ item.name }}</span>
+        </NuxtLink>
+      </div>
+    </div>
+  </div>
 
+  <!-- Spacer for mobile bottom nav -->
+  <div class="md:hidden h-16"></div>
+
+  <!-- Mobile sidebar overlay -->
   <div
-    :class="[
-      'shrink-0 transition-all duration-300 md:hidden',
-      isMobileSidebarOpen ? 'w-55' : 'w-0'
-    ]"
+    v-if="isMobileSidebarOpen"
+    class="md:hidden fixed inset-0 bg-black/50 z-30"
+    @click="closeMobileSidebar"
   ></div>
 </template>
 
@@ -181,5 +199,13 @@ onMounted(() => {
 .fade-enter-from, 
 .fade-leave-to { 
   opacity: 0; 
+}
+
+.scrollbar-hide::-webkit-scrollbar {
+  display: none;
+}
+.scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
 }
 </style>

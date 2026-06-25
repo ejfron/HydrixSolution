@@ -5,6 +5,7 @@ import { PhilippinePeso, Droplets, TrendingUp, ReceiptText } from '@lucide/vue'
 import Navbar from '~/components/userStandard/Navbar.vue'
 import Sidebar from '~/components/userStandard/Sidebar.vue'
 
+
 type Transaction = {
   id: string
   gallon_type: string

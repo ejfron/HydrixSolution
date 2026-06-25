@@ -8,3 +8,20 @@ body {
 html {
   scroll-behavior: smooth;
 }
+
+/* Ensure fixed positioning works */
+.sales-assistant-wrapper {
+  position: fixed !important;
+  z-index: 9999 !important;
+  pointer-events: none !important;
+}
+
+.sales-assistant-wrapper .pointer-events-auto {
+  pointer-events: auto !important;
+}
+
+/* Ensure the button is always clickable */
+.sales-assistant-wrapper button {
+  position: relative;
+  z-index: 10000;
+}

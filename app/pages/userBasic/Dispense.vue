@@ -728,28 +728,78 @@ const dispense = async () => {
   const pricePerPiece = isReseller ? resellerPrice.value! : actualPricePerPiece.value
   const total = isReseller ? resellerTotal.value : regularTotal.value
   const dbPaymentStatus = paymentStatus.value === 'unpaid' ? 'utang' : paymentStatus.value
-  const { error } = await client.from('transactions').insert([{
-    user_id: userId,
-    gallon_type: selectedGallon.value.name,
-    gallon_type_id: selectedGallon.value.id,
-    quantity, price_per_piece: pricePerPiece, total_amount: total,
-    status: 'completed', transaction_type: selectedType.value,
-    reseller_qty: isReseller ? resellerQty.value : null,
-    reseller_price: isReseller ? resellerPrice.value : null,
-    rider_id: selectedRiderId.value || null,
-    rider_name: selectedRiderName.value || null,
-    payment_status: dbPaymentStatus,
-    amount_paid: amountPaidNow.value,
-    balance_due: balanceDue.value,
-    debtor_name: null, debtor_phone: null,
-    paid_at: paymentStatus.value === 'paid' ? new Date().toISOString() : null,
-  }] as any)
+  const collectedNow = amountPaidNow.value
+  const nowIso = new Date().toISOString()
+
+  // .select() is required here so we get back the new transaction's id —
+  // we need it to link the debt_payments row below.
+  //
+  // NOTE: casting the whole chain to `any` here (not just the insert
+  // payload). Supabase's generated types were resolving this query to
+  // `never` even with .returns<>() — likely because .select('id').single()
+  // after an `as any` insert breaks the generic chain before .returns<>()
+  // can override it. Casting the query result directly and typing the
+  // destructured variables ourselves sidesteps that entirely.
+  const { data: insertedTxData, error } = await (client
+    .from('transactions')
+    .insert([{
+      user_id: userId,
+      gallon_type: selectedGallon.value.name,
+      gallon_type_id: selectedGallon.value.id,
+      quantity, price_per_piece: pricePerPiece, total_amount: total,
+      status: 'completed', transaction_type: selectedType.value,
+      reseller_qty: isReseller ? resellerQty.value : null,
+      reseller_price: isReseller ? resellerPrice.value : null,
+      rider_id: selectedRiderId.value || null,
+      rider_name: selectedRiderName.value || null,
+      payment_status: dbPaymentStatus,
+      amount_paid: collectedNow,
+      balance_due: balanceDue.value,
+      debtor_name: null, debtor_phone: null,
+      paid_at: paymentStatus.value === 'paid' ? nowIso : null,
+    }] as any)
+    .select('id')
+    .single() as any)
+
+  const insertedTx = insertedTxData as { id: string } | null
+
   if (error) { errorMsg.value = error.message; loading.value = false; return }
+
+  // CRITICAL: Dashboard, Sales, Reports, and the AI chatbot all calculate
+  // "money collected" exclusively from debt_payments (using paid_at), NOT
+  // from transactions.amount_paid. Without this insert, a "Paid" or
+  // "Partial" dispense updates the transaction correctly but never shows
+  // up in Today's/This Month's/Total Collections — which was the bug.
+  //
+  // - paymentStatus 'paid'    -> insert the FULL amount as collected now
+  // - paymentStatus 'partial' -> insert ONLY the down payment collected now
+  // - paymentStatus 'unpaid'  -> nothing collected yet, so no row at all
+  if (collectedNow > 0 && insertedTx?.id) {
+    const note = paymentStatus.value === 'paid'
+      ? 'Dispense - paid in full'
+      : 'Dispense - partial payment (down payment)'
+
+    const { error: dpError } = await client.from('debt_payments').insert([{
+      transaction_id: insertedTx.id,
+      user_id: userId,
+      amount_paid: collectedNow,
+      note,
+      paid_at: nowIso,
+    }] as any)
+
+    if (dpError) {
+      // The sale itself was already recorded successfully — don't block
+      // the user on this, just surface it so it's not silently lost.
+      console.error('Failed to record debt_payments for this sale:', dpError)
+      errorMsg.value = 'Sale recorded, but the collected amount may not appear in your totals yet. Please check Reports.'
+    }
+  }
+
   const label = isReseller ? 'Reseller' : isWalkIn.value ? 'Walk-in' : 'Regular'
   const debtLabel = paymentStatus.value === 'unpaid'
     ? ` — UNPAID ₱${total.toFixed(2)}`
     : paymentStatus.value === 'partial'
-      ? ` — Partial ₱${amountPaidNow.value.toFixed(2)} paid, ₱${balanceDue.value.toFixed(2)} utang`
+      ? ` — Partial ₱${collectedNow.toFixed(2)} paid, ₱${balanceDue.value.toFixed(2)} utang`
       : ` — PAID ₱${total.toFixed(2)}`
   successMsg.value = `${label} dispense recorded!${debtLabel}`
   loading.value = false

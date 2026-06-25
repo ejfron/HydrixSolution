@@ -4,14 +4,39 @@ import { ref } from 'vue'
 import Navbar from '~/components/userStandard/Navbar.vue'
 import Sidebar from '~/components/userStandard/Sidebar.vue'
 import {
-  LayoutDashboard, Droplets, TrendingUp, FileText, Receipt, Users,
+  LayoutDashboard, Droplets, TrendingUp, FileText, Receipt, Users, Bike,
   ChevronDown, HelpCircle, Lock, Image as ImageIcon, Rocket
 } from '@lucide/vue'
 
 type GuideStep = {
   title: string
   text: string
-  image?: string // path under /images/help/... once you add screenshots
+  image?: string // filename only, e.g. 'riders-01-empty-state.png' — resolved
+                  // via the glob below since these live under app/assets and
+                  // go through Vite's asset pipeline rather than /public.
+}
+
+// Images live directly in app/assets/images/ (no help/ subfolder). Since
+// assets are processed by Vite (not served as static files the way /public
+// is), a plain string path like '/images/foo.png' won't resolve. import.meta.glob
+// with `eager: true` and `import: 'default'` pre-resolves every matching file
+// at build time into a { '/full/path/foo.png': 'resolved-url' } map, which we
+// then look up by filename in resolveHelpImage() below.
+//
+// IMPORTANT: this page lives at app/pages/userStandard/HelpGuide.vue, so this
+// glob path is relative to THIS file's location, not the project root. A
+// relative path is used instead of the '~' alias because glob resolution can
+// behave differently from normal import-statement alias resolution depending
+// on the Vite version — relative paths are the most universally reliable. If
+// this file is moved, update the ../../ prefix to match the new depth.
+const helpImageModules = import.meta.glob('../../assets/images/*.png', {
+  eager: true,
+  import: 'default'
+}) as Record<string, string>
+
+const resolveHelpImage = (filename: string): string | undefined => {
+  const match = Object.keys(helpImageModules).find(path => path.endsWith('/' + filename))
+  return match ? helpImageModules[match] : undefined
 }
 
 type GuideSection = {
@@ -27,27 +52,36 @@ const sections: GuideSection[] = [
     id: 'getting-started',
     label: 'Getting Started',
     icon: Rocket,
-    summary: 'New to HydrixSolution? Set things up in this order before your first sale.',
+    summary: 'New to HydrixSolution? Here is the order things naturally come together.',
     steps: [
       {
-        title: '1. Add your delivery riders first',
-        text: 'Go to Workers or Riders and add each delivery rider before you start dispensing. Riders need to exist in the system before they can be assigned to a sale — if you skip this, you can still dispense, but you won\'t be able to track which rider handled which delivery until you add them.'
+        title: '1. Add your delivery riders',
+        text: 'Go to Riders and tap "Add First Rider" (or "+ Add Rider" once you have at least one). You only need a name — phone number is optional. Riders you add here become selectable on the Dispense page and as filter tabs on Transactions.',
+        image: 'riders-01-empty-state.png'
       },
       {
-        title: '2. Set up gallon types and prices',
-        text: 'On the Dispense page, open "Manage Gallon Types" (or the equivalent settings panel) to add the gallon sizes you sell (e.g. 1gal, 2.5gal, 5gal) and set a price for each. If you also sell to resellers at a different rate, set the reseller price here too. The Dispense page calculates every sale\'s total automatically based on what you configure here, so get this right before recording your first transaction.'
+        title: '2. Add your workers',
+        text: 'Go to Workers and tap "Add First Worker". Fill in their name, choose a Pay Type (Fixed Daily, Per Gallon, or Fixed + % Bonus), set the rate, and pick a Pay Schedule (Weekly, Kinsenas, or Daily). The Salary Preview updates live as you fill the form in, so you can confirm the numbers before saving.',
+        image: 'workers-05-add-worker-fixed.png'
       },
       {
-        title: '3. Confirm your subscription is active',
-        text: 'Check the Subscription page to make sure your plan is active and see your next payment date. A banner will also appear on your Dashboard automatically if your subscription is expiring soon or has expired.'
+        title: '3. Set up your Workers passcode',
+        text: 'The first time you open Workers, you\'ll be asked to set up a 4-digit passcode to protect that section. Enter a passcode, then confirm it a second time. After that, you\'ll need this passcode every time you return to Workers.',
+        image: 'workers-02-passcode-required.png'
       },
       {
-        title: '4. Set up your security passcode',
-        text: 'The first time you try to edit or delete a transaction, you\'ll be asked to create a 4-digit passcode (see the Workers / Riders section below for details). It\'s worth doing this early, before you have real transactions you might need to correct.'
+        title: '4. Confirm your subscription',
+        text: 'Check the Subscription page to see your plan, setup fee status, and next payment due date. A reminder banner will also appear automatically on your Dashboard if a payment is coming up or overdue.',
+        image: 'subscription-01-active.png'
       },
       {
-        title: '5. You\'re ready — start dispensing',
-        text: 'Once riders, gallon types, and prices are set up, head to Dispense to record your first sale. Everything else — Sales, Reports, Transactions, the Dashboard — fills in automatically from there.'
+        title: '5. Set up your gallon types',
+        text: 'Go to Dispense and tap "Create First Gallon" to add the products you sell — name, size, unit, and regular price. You\'ll do this once per gallon type, and each one becomes a card you can dispense from.',
+        image: 'dispense-02-create-gallon-modal.png'
+      },
+      {
+        title: '6. You\'re ready — start dispensing',
+        text: 'With riders, workers, and gallon types in place, tap "Dispense" on any gallon card to record your first sale. Sales, Transactions, Reports, and the Dashboard all fill in automatically from there.'
       }
     ]
   },
@@ -59,7 +93,8 @@ const sections: GuideSection[] = [
     steps: [
       {
         title: '1. Check your daily numbers',
-        text: 'When you log in, the Dashboard shows Today\'s Collections, This Month\'s Collections, Total Collections, and your Total Transactions count. These update automatically as you dispense and collect payments — no need to refresh.'
+        text: 'When you log in, the Dashboard shows Today\'s Collections, This Month\'s Collections, Total Collections, and your Total Transactions count. These update automatically as you dispense and collect payments — no need to refresh.',
+        image: 'dashboard-01-overview.png'
       },
       {
         title: '2. Watch for subscription reminders',
@@ -75,27 +110,35 @@ const sections: GuideSection[] = [
     id: 'dispense',
     label: 'Dispense',
     icon: Droplets,
-    summary: 'Record a new sale — every transaction starts here.',
+    summary: 'Set up your gallon types here, then record every sale from this page.',
     steps: [
       {
-        title: '1. Set up gallon types and prices (first time only)',
-        text: 'Before your first sale, open "Manage Gallon Types" on this page to add the sizes you sell and set a price for each — including a separate reseller price if you sell to retailers at a different rate. You only need to do this once, or whenever your prices change.'
+        title: '1. Add your first gallon type',
+        text: 'With no gallon types yet, you\'ll see an empty state with a "Create First Gallon" button (or "+ Add Gallon Type" afterward). This is where you set up the products you sell — you only need to do this once per gallon type, or whenever you add a new size.',
+        image: 'dispense-01-empty-state.png'
       },
       {
-        title: '2. Choose the gallon type and quantity',
-        text: 'Select which gallon type the customer is buying gal base on your gallon type product and how many pieces. The total amount is calculated automatically based on the prices you set up above.'
+        title: '2. Fill in the gallon details',
+        text: 'Optionally upload a product image, then enter a Gallon Name (e.g. "Round 5 Gallon"), the Size and Unit, and the Regular Price. Tap "Create Gallon" to save it.',
+        image: 'dispense-02-create-gallon-modal.png'
       },
       {
-        title: '3. Pick Regular or Reseller',
-        text: 'Choose "Regular" for a normal walk-in or delivery customer, or "Reseller" if this sale is to a retailer/reseller buying at a different price.'
+        title: '3. Dispense from a gallon card',
+        text: 'Each gallon type you create shows as a card with its name, size, and pricing badges (Rider, Walk-in Custom, Reseller). Tap "Dispense" on a card to record a sale of that gallon type.',
+        image: 'dispense-03-gallon-card.png'
       },
       {
-        title: '4. Assign a rider (optional)',
-        text: 'If a delivery rider is handling this order, select them from the list. Riders must be added on the Workers/Riders page first before they\'ll appear here. Assigning a rider lets you track sales and collections per rider later on the Transactions page.'
+        title: '4. Choose quantity, customer type, and rider',
+        text: 'When dispensing, set the quantity, choose whether it\'s a Regular walk-in/delivery sale or a Reseller sale (which can use a different price), and optionally assign a delivery rider — riders must already be added on the Riders page to appear here.'
       },
       {
         title: '5. Set the payment status',
         text: 'Mark the sale as Paid (fully collected now), Partial (some money collected, some still owed), or Utang (nothing collected yet — full amount owed). Partial and Utang sales can be paid off later from the Transactions page.'
+      },
+      {
+        title: '6. Delete a gallon type if needed',
+        text: 'If you need to remove a gallon type — for example, you stopped offering a size — open its options and confirm deletion. This action cannot be undone, so make sure it\'s the right one before confirming.',
+        image: 'dispense-04-delete-confirm.png'
       }
     ]
   },
@@ -111,7 +154,8 @@ const sections: GuideSection[] = [
       },
       {
         title: '2. Today, Yesterday, This Month, This Year',
-        text: 'Each card shows collected money for that period. Important: money is counted on the day it was actually collected — so if a customer owed you money from a few days ago and pays today, that payment counts toward today\'s total, not the day of the original sale.'
+        text: 'Each card shows collected money for that period. Important: money is counted on the day it was actually collected — so if a customer owed you money from a few days ago and pays today, that payment counts toward today\'s total, not the day of the original sale.',
+        image: 'sales-01-overview.png'
       },
       {
         title: '3. Gallon Type Breakdown',
@@ -127,7 +171,8 @@ const sections: GuideSection[] = [
     steps: [
       {
         title: '1. Switch between Daily, Monthly, and Yearly',
-        text: 'Use the toggle at the top right to change how your sales are grouped. Daily shows your last 7 days, Monthly shows your last 12 months, and Yearly shows every year you\'ve had activity.'
+        text: 'Use the toggle at the top right to change how your sales are grouped. Daily shows your last 7 days, Monthly shows your last 12 months, and Yearly shows every year you\'ve had activity.',
+        image: 'reports-01-overview.png'
       },
       {
         title: '2. Read the breakdown table',
@@ -147,7 +192,8 @@ const sections: GuideSection[] = [
     steps: [
       {
         title: '1. Filter by rider or date',
-        text: 'Use the tabs at the top to view "All Transactions" or filter by a specific delivery rider. Use the date pickers to narrow down to a specific day or range — for example, June 20 to June 21.'
+        text: 'Use the tabs at the top to view "All Transactions" or filter by a specific delivery rider. Use the date range fields to narrow down to a specific day or range — for example, June 20 to June 21 — or tap "Clear" to reset.',
+        image: 'transactions-01-empty-state.png'
       },
       {
         title: '2. Read the summary cards',
@@ -168,31 +214,102 @@ const sections: GuideSection[] = [
     ]
   },
   {
-    id: 'workers',
-    label: 'Workers / Riders',
-    icon: Users,
-    summary: 'Manage your delivery riders, their pay, and protect sensitive actions with a passcode.',
+    id: 'riders',
+    label: 'Riders',
+    icon: Bike,
+    summary: 'Register your delivery riders so you can assign and track their deliveries.',
     steps: [
       {
-        title: '1. Add a rider — do this before using Dispense',
-        text: 'Go to the Workers page to add a new delivery rider. Riders need to exist here first before they\'ll show up as a selectable option on the Dispense page or as a filter tab on the Transactions page — so it\'s worth adding your team before you start recording sales.'
+        title: '1. Add your first rider',
+        text: 'When you have no riders yet, the Riders page shows an empty state with an "Add First Rider" button. Tap it (or "+ Add Rider" once you have riders already) to open the registration form.',
+        image: 'riders-01-empty-state.png'
       },
       {
-        title: '2. Set up pay type and schedule',
-        text: 'Choose how each worker is paid — fixed rate, per gallon delivered, or a fixed amount plus a percentage — and how often they\'re paid (daily, weekly, or kinsenas/twice-monthly).'
+        title: '2. Fill in their name and phone',
+        text: 'Enter the rider\'s name — phone number is optional. Tap "Save Rider" to add them to your team.',
+        image: 'riders-02-add-modal.png'
       },
       {
-        title: '3. Track cash advances',
-        text: 'If a worker takes a cash advance, record it here. It will automatically be deducted from their next computed pay, so you never lose track of what\'s owed.'
+        title: '3. See your rider card',
+        text: 'Once saved, the rider appears as a card showing their name, the date they were added, and an "Active" status badge. They\'re now selectable on the Dispense page and appear as a filter tab on Transactions.',
+        image: 'riders-03-added-rider.png'
       },
       {
-        title: '4. Set up your security passcode',
-        text: 'The first time you try to edit or delete a transaction, you\'ll be asked to create a 4-digit passcode. Enter it once, then confirm it a second time to make sure it matches — this protects your records from accidental or unauthorized changes.',
-        image: '/images/help/workers-passcode-setup.png'
+        title: '4. Remove a rider if needed',
+        text: 'Tap the trash icon on a rider\'s card to remove them. You\'ll be asked to confirm — removing a rider keeps their past transaction history, it just stops them from being assignable to new sales.',
+        image: 'riders-04-remove-confirm.png'
+      }
+    ]
+  },
+  {
+    id: 'workers',
+    label: 'Workers',
+    icon: Users,
+    summary: 'Manage your team\'s pay setup, attendance, cash advances, and payroll — protected by a passcode.',
+    steps: [
+      {
+        title: '1. Set up your Workers passcode first',
+        text: 'The very first time you open Workers, you\'ll be asked to set up a 4-digit passcode before you can access the section at all. Tap "Set Up Passcode Now".',
+        image: 'workers-01-passcode-required.png'
       },
       {
-        title: '5. Enter your passcode to confirm actions',
-        text: 'After your passcode is set up, you\'ll be asked to enter it any time you try to edit or delete a transaction. If you forget it, use the "Forgot passcode" option to contact admin for a reset — for security, passcodes can\'t be recovered any other way.'
+        title: '2. Create your passcode',
+        text: 'Enter a 4-digit passcode using the on-screen keypad, then tap "Next".',
+        image: 'workers-02-passcode-create.png'
+      },
+      {
+        title: '3. Confirm your passcode',
+        text: 'Enter the same passcode again to confirm it matches, then tap "Confirm & Save" to finish setup.',
+        image: 'workers-03-passcode-confirm.png'
+      },
+      {
+        title: '4. Add your first worker',
+        text: 'With no workers yet, you\'ll see an empty state with an "Add First Worker" button (or "+ Add Worker" afterward).',
+        image: 'workers-04-empty-state.png'
+      },
+      {
+        title: '5. Choose a Pay Type — Fixed Daily',
+        text: '"Fixed Daily" pays a set amount per day worked, regardless of gallons delivered. Enter the worker\'s name, the Daily Rate, Regular Hours/Day, and a Pay Schedule. As you fill in the form, a Salary Preview appears showing the computed total for the schedule you picked.',
+        image: 'workers-06-add-worker-fixed-filled.png'
+      },
+      {
+        title: '6. Choose a Pay Type — Per Gallon',
+        text: '"Per Gallon" pays based on total gallons delivered, with no base daily rate — earnings depend entirely on delivery volume. Enter the Rate per Gallon, and the Salary Preview shows pay per 100 gallons as a reference.',
+        image: 'workers-07-add-worker-pergallon.png'
+      },
+      {
+        title: '7. Choose a Pay Type — Fixed + % Bonus',
+        text: '"Fixed + % Bonus" gives a guaranteed Base Daily Rate plus a per-gallon bonus and a percentage of gallon sales — useful for incentivizing delivery volume. The form shows exactly how the formula works: Daily pay = Base rate + (Gallons delivered × ₱/gallon bonus) + (Gallon revenue × %).',
+        image: 'workers-08-add-worker-bonus.png'
+      },
+      {
+        title: '8. See your team at a glance',
+        text: 'Once added, each worker shows as a card with their rate, hours, pay schedule, and pay type badge — plus four quick actions: Log Work Days, Compute Salary, Cash Advance, and Remove.',
+        image: 'workers-09-list-view.png'
+      },
+      {
+        title: '9. Log work days',
+        text: 'Tap "Log Work Days" to record attendance for a pay period. Pick a Start Date and Number of Days, then fill in Hours Worked, Overtime, Gallons Delivered, and optional Notes for each day — or tap "All Work Days" to mark every day present at once. Each day shows a running Base and Day Total, with Work Days and Total Hours summarized at the top.',
+        image: 'workers-10-log-work-days.png'
+      },
+      {
+        title: '10. Record a cash advance',
+        text: 'Tap "Cash Advance" on a worker\'s card, enter the amount and an optional reason. This amount is automatically deducted from their next payroll computation — you don\'t need to subtract it yourself.',
+        image: 'workers-11-cash-advance.png'
+      },
+      {
+        title: '11. Compute payroll',
+        text: 'Tap "Compute Salary" on a worker\'s card, then set the Payroll Period start and end dates — or tap "Auto-detect work period" to let the system find it based on their pay schedule. Tap "Compute Payroll" to calculate what they\'re owed, with logged work days and any cash advances already factored in.',
+        image: 'workers-12-compute-payroll.png'
+      },
+      {
+        title: '12. Remove a worker if needed',
+        text: 'Tap "Remove" on a worker\'s card to delete them. You\'ll be asked to confirm, since this permanently deletes their work history and logs along with them — this action cannot be undone.',
+        image: 'workers-13-delete-confirm.png'
+      },
+      {
+        title: '13. Enter your passcode on future visits',
+        text: 'After setup, you\'ll be asked to enter your 4-digit passcode every time you return to the Workers section. If you forget it, use the "Forgot passcode" option to contact admin for a reset — for security, passcodes can\'t be recovered any other way.'
       }
     ]
   }
@@ -284,8 +401,8 @@ const toggleSection = (id: string) => {
                        /public/images/help/, otherwise shows a clean placeholder
                        so the page still looks intentional before screenshots
                        are wired in. -->
-                  <div v-if="step.image" class="mt-2 rounded-2xl border border-slate-200 overflow-hidden bg-slate-50">
-                    <img :src="step.image" :alt="step.title" class="w-full h-auto block" />
+                  <div v-if="step.image && resolveHelpImage(step.image)" class="mt-2 rounded-2xl border border-slate-200 overflow-hidden bg-slate-50">
+                    <img :src="resolveHelpImage(step.image)" :alt="step.title" class="w-full h-auto block" />
                   </div>
                   <div v-else class="mt-2 rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-6 flex items-center justify-center gap-2 text-slate-300">
                     <ImageIcon :size="16" />

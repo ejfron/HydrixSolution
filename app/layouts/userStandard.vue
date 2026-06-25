@@ -7,11 +7,13 @@
         <slot />
       </main>
     </div>
+
   </div>
 </template>
 
 <script setup lang="ts">
 import Sidebar from '~/components/userStandard/Sidebar.vue';
 import Navbar from '~/components/userStandard/Navbar.vue';
+import SalesAssistant from '~/components/shared/SalesAssistant.vue';
 
 </script>
