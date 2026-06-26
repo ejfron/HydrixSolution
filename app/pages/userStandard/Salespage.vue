@@ -102,11 +102,7 @@ const fetchSales = async () => {
     '5gal': { quantity: 0, amount: 0 },
   }
 
-  // Revenue is counted on the date the money was actually COLLECTED
-  // (debt_payments.paid_at), not the date the sale was originally created.
-  // This mirrors the Transactions page: a utang from an earlier day that
-  // gets paid off today counts toward today's collected revenue, not the
-  // day the original sale happened.
+
   for (const p of payments) {
     const tx = txById.get(p.transaction_id)
     if (!tx) continue

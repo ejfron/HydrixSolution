@@ -16,12 +16,7 @@ type GuideStep = {
                   // go through Vite's asset pipeline rather than /public.
 }
 
-// Images live directly in app/assets/images/ (no help/ subfolder). Since
-// assets are processed by Vite (not served as static files the way /public
-// is), a plain string path like '/images/foo.png' won't resolve. import.meta.glob
-// with `eager: true` and `import: 'default'` pre-resolves every matching file
-// at build time into a { '/full/path/foo.png': 'resolved-url' } map, which we
-// then look up by filename in resolveHelpImage() below.
+
 const helpImageModules = import.meta.glob('~/assets/images/*.{png,jpg,jpeg,webp}', {
   eager: true,
   import: 'default'
