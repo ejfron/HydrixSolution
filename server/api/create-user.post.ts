@@ -25,7 +25,7 @@ export default defineEventHandler(async (event) => {
 
   // ── New Plan config ──────────────────────────────────────
   const PLANS: Record<string, { setupFee: number; monthlyFee: number; isPremium: boolean }> = {
-    basic:    { setupFee: 599,  monthlyFee: 449, isPremium: false },
+    basic:    { setupFee: 599,  monthlyFee: 399, isPremium: false },
     standard: { setupFee: 1199,  monthlyFee: 649, isPremium: false },
     premium:  { setupFee: 80000, monthlyFee: 0,   isPremium: true  },
   }

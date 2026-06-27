@@ -94,8 +94,11 @@ function cleanResponse(text: string): string {
   
   let cleaned = text
   
+  // Remove asterisks used for bold formatting markers (but keep the text)
   cleaned = cleaned.replace(/\*([^*]+)\*/g, '$1')
   cleaned = cleaned.replace(/\*/g, '')
+  
+  // Remove emojis
   cleaned = cleaned.replace(/[\u{1F600}-\u{1F6FF}]/gu, '')
   cleaned = cleaned.replace(/[\u{2600}-\u{27BF}]/gu, '')
   cleaned = cleaned.replace(/[\u{1F700}-\u{1F77F}]/gu, '')
@@ -105,8 +108,14 @@ function cleanResponse(text: string): string {
   cleaned = cleaned.replace(/[\u{1FA00}-\u{1FA6F}]/gu, '')
   cleaned = cleaned.replace(/[\u{1FA70}-\u{1FAFF}]/gu, '')
   
-  cleaned = cleaned.replace(/(\d+\.)\s*/g, '\n$1 ')
+  // FIXED: Only break numbered list items (like "1. Item") that start a line
+  // This will NOT break peso amounts like ₱3,670.00 because they have ₱ and comma before the number
+  cleaned = cleaned.replace(/(^|\n)(\d+)\.\s/g, '$1\n$2. ')
+  
+  // Keep bullet points on new lines
   cleaned = cleaned.replace(/(•)\s*/g, '\n$1 ')
+  
+  // Reduce multiple newlines to max 2
   cleaned = cleaned.replace(/\n{3,}/g, '\n\n')
   cleaned = cleaned.trim()
   
@@ -114,7 +123,7 @@ function cleanResponse(text: string): string {
 }
 
 // ============================================================
-// EXISTING TOOL IMPLEMENTATIONS (unchanged)
+// TOOL IMPLEMENTATIONS
 // ============================================================
 
 async function getSalesSummary(
@@ -157,9 +166,12 @@ async function getSalesSummary(
   const allTx: Transaction[] = txs || []
   const allPayments: DebtPayment[] = payments || []
 
+  const periodTxIds = allTx.map(t => t.id)
+  const oldDebtPayments = allPayments.filter(p => !periodTxIds.includes(p.transaction_id))
+
   const grossSales = allTx.reduce((sum: number, t: Transaction) => sum + Number(t.total_amount), 0)
   const totalGallons = allTx.reduce((sum: number, t: Transaction) => sum + Number(t.quantity), 0)
-  const totalCollected = allPayments.reduce((sum: number, p: DebtPayment) => sum + Number(p.amount_paid), 0)
+  const totalCollected = oldDebtPayments.reduce((sum: number, p: DebtPayment) => sum + Number(p.amount_paid), 0)
   const unpaidFromThisPeriod = allTx
     .filter((t: Transaction) => t.payment_status === 'utang' || t.payment_status === 'partial')
     .reduce((sum: number, t: Transaction) => sum + Number(t.balance_due), 0)
@@ -173,6 +185,8 @@ async function getSalesSummary(
     (t: Transaction) => t.payment_status === 'utang' || t.payment_status === 'partial'
   ).length
 
+  const totalCollectionForPeriod = paidFromThisPeriod + totalCollected
+
   return {
     date_range: { start: startDate, end: endDate },
     gross_sales: Number(grossSales.toFixed(2)),
@@ -182,13 +196,15 @@ async function getSalesSummary(
     debt_transactions: debtTransactions,
     paid_on_sale_date: Number(paidFromThisPeriod.toFixed(2)),
     unpaid_balance_from_this_period: Number(unpaidFromThisPeriod.toFixed(2)),
-    collections_received_in_period: Number(totalCollected.toFixed(2)),
-    collection_transactions: allPayments.length,
+    collections_from_old_debts: Number(totalCollected.toFixed(2)),
+    collection_transactions: oldDebtPayments.length,
+    total_collection_for_period: Number(totalCollectionForPeriod.toFixed(2)),
     summary_text: `Sales Summary for ${startDate} to ${endDate}:
 Gross Sales: ${formatPeso(grossSales)} from ${allTx.length} transactions
-- ${fullyPaidTransactions} transactions fully paid on sale date: ${formatPeso(paidFromThisPeriod)}
-- ${debtTransactions} transactions with unpaid balance: ${formatPeso(unpaidFromThisPeriod)}
-Collections Received: ${formatPeso(totalCollected)} from ${allPayments.length} payments
+- Paid on sale date: ${formatPeso(paidFromThisPeriod)} (${fullyPaidTransactions} transactions)
+- Unpaid balance: ${formatPeso(unpaidFromThisPeriod)} (${debtTransactions} transactions)
+Collections from Old Debts: ${formatPeso(totalCollected)} from ${oldDebtPayments.length} payments
+Total Collection for Period: ${formatPeso(totalCollectionForPeriod)}
 Gallons Sold: ${totalGallons}`
   }
 }
@@ -205,6 +221,7 @@ async function getTodaySales(client: any, userId: string) {
   const start = phDayStartUTC(today)
   const end = phDayEndUTC(today)
   
+  // Get today's transactions
   const { data: txs, error } = await client
     .from('transactions')
     .select('*')
@@ -221,6 +238,10 @@ async function getTodaySales(client: any, userId: string) {
   
   const allTx: Transaction[] = txs || []
   
+  // Get today's transaction IDs
+  const todayTxIds = allTx.map(t => t.id)
+  
+  // Get debt payments received today
   const { data: payments } = await client
     .from('debt_payments')
     .select('amount_paid, paid_at, transaction_id')
@@ -229,7 +250,11 @@ async function getTodaySales(client: any, userId: string) {
     .lte('paid_at', end.toISOString())
   
   const allPayments: DebtPayment[] = payments || []
-  const totalCollectionsToday = allPayments.reduce((sum: number, p: DebtPayment) => sum + Number(p.amount_paid), 0)
+  
+  // Separate: payments for today's transactions vs payments for old transactions
+  const paymentsForOldTx = allPayments.filter(p => !todayTxIds.includes(p.transaction_id))
+  
+  const oldDebtCollectionsToday = paymentsForOldTx.reduce((sum: number, p: DebtPayment) => sum + Number(p.amount_paid), 0)
   
   const grossSalesToday = allTx.reduce((sum: number, t: Transaction) => sum + Number(t.total_amount), 0)
   const totalGallonsToday = allTx.reduce((sum: number, t: Transaction) => sum + Number(t.quantity), 0)
@@ -242,6 +267,9 @@ async function getTodaySales(client: any, userId: string) {
   const paidCount = allTx.filter((t: Transaction) => t.payment_status === 'paid' || t.payment_status === 'regular').length
   const debtCount = allTx.filter((t: Transaction) => t.payment_status === 'utang' || t.payment_status === 'partial').length
   
+  // Total collection today = new sales paid today + old debt payments received today
+  const totalCollectionToday = paidToday + oldDebtCollectionsToday
+  
   return {
     date: today,
     sales_count: allTx.length,
@@ -251,15 +279,15 @@ async function getTodaySales(client: any, userId: string) {
     unpaid_from_todays_sales: Number(unpaidToday.toFixed(2)),
     paid_transactions_today: paidCount,
     debt_transactions_today: debtCount,
-    collections_received_today: Number(totalCollectionsToday.toFixed(2)),
-    collection_payments_today: allPayments.length,
-    total_cash_today: Number((totalCollectionsToday + paidToday).toFixed(2)),
+    collections_from_old_debts_today: Number(oldDebtCollectionsToday.toFixed(2)),
+    old_debt_payments_count: paymentsForOldTx.length,
+    total_collection_today: Number(totalCollectionToday.toFixed(2)),
     formatted_summary: `Today's Report (${today}):
 New Sales: ${allTx.length} transactions totaling ${formatPeso(grossSalesToday)} from ${totalGallonsToday} gallons
 - Paid on sale: ${formatPeso(paidToday)} (${paidCount} transactions)
 - Unpaid balance: ${formatPeso(unpaidToday)} (${debtCount} transactions)
-Collections Received Today: ${formatPeso(totalCollectionsToday)} from ${allPayments.length} payments
-Total Cash Received Today: ${formatPeso(totalCollectionsToday + paidToday)}`
+Collections from Old Debts: ${formatPeso(oldDebtCollectionsToday)} from ${paymentsForOldTx.length} payments
+Total Collection Today: ${formatPeso(totalCollectionToday)}`
   }
 }
 
@@ -288,11 +316,6 @@ async function getTopDebtors(client: any, userId: string, limit: number) {
     status: d.payment_status
   }))
 }
-
-// ============================================================
-// NEW TOOL 1: Detailed debtor lookup (search by name, or list all,
-// not just "top N" — covers debtor_details fully)
-// ============================================================
 
 async function getDebtorDetails(
   client: any,
@@ -344,11 +367,6 @@ async function getDebtorDetails(
     }))
   }
 }
-
-// ============================================================
-// NEW TOOL 2: Riders — list with per-rider performance (gallons,
-// revenue, transaction count) over an optional date range
-// ============================================================
 
 async function getRidersSummary(
   client: any,
@@ -414,11 +432,6 @@ async function getRidersSummary(
     unassigned_transaction_count: unassignedTxs.length
   }
 }
-
-// ============================================================
-// NEW TOOL 3: Workers — pay type, schedule, current cash advance
-// balance, and recent unpaid work logs
-// ============================================================
 
 async function getWorkersSummary(client: any, userId: string, workerName: string | null) {
   if (!userId) {
@@ -491,10 +504,6 @@ async function getWorkersSummary(client: any, userId: string, workerName: string
   }
 }
 
-// ============================================================
-// NEW TOOL 4: Payroll history / pending payroll for a worker
-// ============================================================
-
 async function getPayrollSummary(client: any, userId: string, workerName: string | null) {
   if (!userId) {
     return { error: 'User not authenticated' }
@@ -549,11 +558,6 @@ async function getPayrollSummary(client: any, userId: string, workerName: string
   return { workers: results }
 }
 
-// ============================================================
-// NEW TOOL 5: Unpaid balances across the whole business — utang +
-// partial transactions, aggregated, not just top debtors
-// ============================================================
-
 async function getUnpaidBalances(client: any, userId: string) {
   if (!userId) {
     return { error: 'User not authenticated' }
@@ -591,16 +595,6 @@ async function getUnpaidBalances(client: any, userId: string) {
     }))
   }
 }
-
-// ============================================================
-// NEW TOOL 6: Subscription / plan status from profiles
-//
-// Matches the real schema used by Subscription.vue:
-// profiles columns are plan, subscription_status, next_payment_date,
-// setup_fee_paid — there is NO expires_at column. Days-remaining and
-// expired/active status are derived from next_payment_date the same
-// way Subscription.vue's `daysRemaining`/`isExpired` computed values do.
-// ============================================================
 
 const SETUP_FEE: Record<string, number> = {
   basic: 2500,
@@ -643,7 +637,6 @@ async function getSubscriptionStatus(client: any, userId: string) {
   const isExpired =
     data?.subscription_status === 'expired' || (daysRemaining !== null && daysRemaining <= 0)
 
-  // Payment history, same path Subscription.vue uses: subscriptions -> subscription_payments
   let recentPayments: Array<{ amount: number; paid_at: string; due_date: string }> = []
   const { data: sub } = await client
     .from('subscriptions')
@@ -684,12 +677,6 @@ async function getSubscriptionStatus(client: any, userId: string) {
   }
 }
 
-// ============================================================
-// NEW TOOL 7: General business report over a date range —
-// combines sales, collections, debts, riders, and worker payroll
-// into one rollup (for "give me a report" type questions)
-// ============================================================
-
 async function getBusinessReport(
   client: any,
   userId: string,
@@ -706,13 +693,13 @@ async function getBusinessReport(
   const [txResult, paymentsResult, payrollResult] = await Promise.all([
     client
       .from('transactions')
-      .select('total_amount, quantity, payment_status, balance_due, rider_id, created_at')
+      .select('id, total_amount, quantity, payment_status, balance_due, rider_id, created_at, amount_paid')
       .eq('user_id', userId)
       .gte('created_at', start.toISOString())
       .lte('created_at', end.toISOString()),
     client
       .from('debt_payments')
-      .select('amount_paid, paid_at')
+      .select('amount_paid, paid_at, transaction_id')
       .eq('user_id', userId)
       .gte('paid_at', start.toISOString())
       .lte('paid_at', end.toISOString()),
@@ -730,37 +717,47 @@ async function getBusinessReport(
   const payments: any[] = paymentsResult.data || []
   const payrollRecords: any[] = payrollResult.data || []
 
-  const grossSales = txs.reduce((s, t) => s + Number(t.total_amount), 0)
-  const totalGallons = txs.reduce((s, t) => s + Number(t.quantity), 0)
-  const totalCollected = payments.reduce((s, p) => s + Number(p.amount_paid), 0)
+  const periodTxIds = txs.map((t: any) => t.id)
+  const oldDebtPayments = payments.filter((p: any) => !periodTxIds.includes(p.transaction_id))
+  
+  const grossSales = txs.reduce((s: number, t: any) => s + Number(t.total_amount), 0)
+  const totalGallons = txs.reduce((s: number, t: any) => s + Number(t.quantity), 0)
+  const paidOnSale = txs
+    .filter((t: any) => t.payment_status === 'paid' || t.payment_status === 'regular')
+    .reduce((s: number, t: any) => s + Number(t.amount_paid), 0)
+  const oldDebtCollected = oldDebtPayments.reduce((s: number, p: any) => s + Number(p.amount_paid), 0)
   const unpaidBalance = txs
-    .filter((t) => t.payment_status === 'utang' || t.payment_status === 'partial')
-    .reduce((s, t) => s + Number(t.balance_due), 0)
-  const totalPayroll = payrollRecords.reduce((s, p) => s + Number(p.net_pay), 0)
-  const ridersInvolved = new Set(txs.filter((t) => t.rider_id).map((t) => t.rider_id)).size
+    .filter((t: any) => t.payment_status === 'utang' || t.payment_status === 'partial')
+    .reduce((s: number, t: any) => s + Number(t.balance_due), 0)
+  const totalPayroll = payrollRecords.reduce((s: number, p: any) => s + Number(p.net_pay), 0)
+  const ridersInvolved = new Set(txs.filter((t: any) => t.rider_id).map((t: any) => t.rider_id)).size
+  const totalCollection = paidOnSale + oldDebtCollected
 
   return {
     date_range: { start: startDate, end: endDate },
     gross_sales: Number(grossSales.toFixed(2)),
     total_gallons_sold: totalGallons,
     total_transactions: txs.length,
-    collections_received: Number(totalCollected.toFixed(2)),
+    paid_on_sale_date: Number(paidOnSale.toFixed(2)),
+    collections_from_old_debts: Number(oldDebtCollected.toFixed(2)),
     unpaid_balance_outstanding: Number(unpaidBalance.toFixed(2)),
     payroll_paid_out: Number(totalPayroll.toFixed(2)),
-    net_cash_position: Number((totalCollected - totalPayroll).toFixed(2)),
+    net_cash_position: Number((oldDebtCollected - totalPayroll).toFixed(2)),
     riders_with_deliveries: ridersInvolved,
+    total_collection: Number(totalCollection.toFixed(2)),
     summary_text: `Business Report (${startDate} to ${endDate}):
 Gross Sales: ${formatPeso(grossSales)} (${txs.length} transactions, ${totalGallons} gallons)
-Collections Received: ${formatPeso(totalCollected)}
+Paid on Sale Date: ${formatPeso(paidOnSale)}
+Collections from Old Debts: ${formatPeso(oldDebtCollected)}
 Unpaid Balance Outstanding: ${formatPeso(unpaidBalance)}
 Payroll Paid Out: ${formatPeso(totalPayroll)}
-Net Cash Position: ${formatPeso(totalCollected - totalPayroll)}
+Total Collection: ${formatPeso(totalCollection)}
 Riders with deliveries this period: ${ridersInvolved}`
   }
 }
 
 // ============================================================
-// Chat session helpers (unchanged)
+// Chat session helpers
 // ============================================================
 
 async function getOrCreateSession(client: any, userId: string) {
@@ -835,7 +832,7 @@ async function updateSessionActivity(client: any, sessionId: string) {
 
 const getSalesSummaryDeclaration: FunctionDeclaration = {
   name: 'get_sales_summary',
-  description: 'Get complete sales summary for a date range including gross sales, collections received, and unpaid balances.',
+  description: 'Get complete sales summary for a date range including gross sales, collections from old debts, and total collection.',
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -848,7 +845,7 @@ const getSalesSummaryDeclaration: FunctionDeclaration = {
 
 const getTodaySalesDeclaration: FunctionDeclaration = {
   name: 'get_today_sales',
-  description: 'Get today\'s complete report showing new sales, collections received today, and debt payments.',
+  description: 'Get today\'s complete report. Returns: gross_sales_today, paid_on_sale_date, unpaid_from_todays_sales, collections_from_old_debts_today, total_collection_today.',
   parameters: {
     type: Type.OBJECT,
     properties: {}
@@ -857,7 +854,7 @@ const getTodaySalesDeclaration: FunctionDeclaration = {
 
 const getTopDebtorsDeclaration: FunctionDeclaration = {
   name: 'get_top_debtors',
-  description: 'Get the customers/debtors who currently owe the most money with unpaid balances.',
+  description: 'Get the customers/debtors who currently owe the most money.',
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -868,19 +865,19 @@ const getTopDebtorsDeclaration: FunctionDeclaration = {
 
 const getDebtorDetailsDeclaration: FunctionDeclaration = {
   name: 'get_debtor_details',
-  description: 'Search and get detailed debtor records, optionally filtered by debtor name. Use this when the user asks about a SPECIFIC named debtor, or wants the full list of debtors rather than just the top few.',
+  description: 'Search and get detailed debtor records.',
   parameters: {
     type: Type.OBJECT,
     properties: {
-      debtor_name: { type: Type.STRING, description: 'Optional partial or full debtor name to search for. Omit to get all debtors.' },
-      include_fully_paid: { type: Type.BOOLEAN, description: 'Whether to include debtors who have already fully paid. Default false.' }
+      debtor_name: { type: Type.STRING, description: 'Optional debtor name to search for.' },
+      include_fully_paid: { type: Type.BOOLEAN, description: 'Include fully paid debtors. Default false.' }
     }
   }
 }
 
 const getRidersSummaryDeclaration: FunctionDeclaration = {
   name: 'get_riders_summary',
-  description: 'Get all delivery riders with their performance: revenue generated, gallons delivered, transaction count, and unpaid balances from their deliveries. Optionally scoped to a date range.',
+  description: 'Get all delivery riders with their performance.',
   parameters: {
     type: Type.OBJECT,
     properties: {
@@ -892,29 +889,29 @@ const getRidersSummaryDeclaration: FunctionDeclaration = {
 
 const getWorkersSummaryDeclaration: FunctionDeclaration = {
   name: 'get_workers_summary',
-  description: 'Get workers (staff, not delivery riders) including their pay type, pay rate, pay schedule, unpaid cash advances, and recent unpaid work logs. Optionally filtered by worker name.',
+  description: 'Get workers including pay type, pay rate, pay schedule.',
   parameters: {
     type: Type.OBJECT,
     properties: {
-      worker_name: { type: Type.STRING, description: 'Optional partial or full worker name to search for. Omit to get all workers.' }
+      worker_name: { type: Type.STRING, description: 'Optional worker name to search for.' }
     }
   }
 }
 
 const getPayrollSummaryDeclaration: FunctionDeclaration = {
   name: 'get_payroll_summary',
-  description: 'Get payroll history for workers, including gross pay, cash advance deductions, and net pay per period. Use when asked about salary history, how much a worker was paid, or payroll records.',
+  description: 'Get payroll history for workers.',
   parameters: {
     type: Type.OBJECT,
     properties: {
-      worker_name: { type: Type.STRING, description: 'Optional worker name to filter to a single worker. Omit for all workers.' }
+      worker_name: { type: Type.STRING, description: 'Optional worker name to filter.' }
     }
   }
 }
 
 const getUnpaidBalancesDeclaration: FunctionDeclaration = {
   name: 'get_unpaid_balances',
-  description: 'Get a full breakdown of all unpaid/utang and partially-paid transactions across the whole business, with total outstanding balance. Use for broad questions about total unpaid money, not for a single named debtor.',
+  description: 'Get all unpaid/utang and partially-paid transactions.',
   parameters: {
     type: Type.OBJECT,
     properties: {}
@@ -923,7 +920,7 @@ const getUnpaidBalancesDeclaration: FunctionDeclaration = {
 
 const getSubscriptionStatusDeclaration: FunctionDeclaration = {
   name: 'get_subscription_status',
-  description: 'Get the current logged-in user\'s own Hydrix subscription: plan, status, setup fee paid status, next payment due date, whether it is expired or expiring soon, and recent payment history.',
+  description: 'Get the user\'s Hydrix subscription status.',
   parameters: {
     type: Type.OBJECT,
     properties: {}
@@ -932,12 +929,12 @@ const getSubscriptionStatusDeclaration: FunctionDeclaration = {
 
 const getBusinessReportDeclaration: FunctionDeclaration = {
   name: 'get_business_report',
-  description: 'Get a complete business report for a date range combining sales, collections, unpaid balances, payroll paid out, and net cash position. Use for broad "give me a report" or "how is my business doing" style questions covering multiple areas at once.',
+  description: 'Get a complete business report for a date range.',
   parameters: {
     type: Type.OBJECT,
     properties: {
       start_date: { type: Type.STRING, description: 'Start date, YYYY-MM-DD' },
-      end_date: { type: Type.STRING, description: 'End date, YYYY-MM-DD (inclusive)' }
+      end_date: { type: Type.STRING, description: 'End date, YYYY-MM-DD' }
     },
     required: ['start_date', 'end_date']
   }
@@ -964,94 +961,70 @@ function buildSystemInstruction(isAuthenticated: boolean) {
   if (isAuthenticated) {
     return `You are a friendly business assistant for Hydrix Water Station System in the Philippines.
 
-You have access to the user's full business data: sales, debtors, riders, workers, payroll, unpaid balances, and their own subscription status. Use the tools to get real data.
+You have access to the user's full business data. Use the tools to get real data.
 
 CRITICAL RULES:
 1. ALWAYS use get_today_sales for "today" or "today's sales"
 2. ALWAYS use get_sales_summary for date ranges like "this week", "this month"
-3. ALWAYS use get_top_debtors for quick "who owes me the most" questions; use get_debtor_details when a SPECIFIC debtor is named or a full list is requested
-4. ALWAYS use get_unpaid_balances for broad "how much utang total" questions across the whole business
-5. ALWAYS use get_riders_summary for questions about delivery riders, their performance, or deliveries
-6. ALWAYS use get_workers_summary for questions about staff/workers, their pay setup, or cash advances
-7. ALWAYS use get_payroll_summary for questions about salary history or how much a worker was paid
-8. ALWAYS use get_subscription_status for questions about the user's own Hydrix plan, payment status, next payment due date, or payment history
-9. ALWAYS use get_business_report for broad "how is my business doing" or multi-area report requests
-10. NEVER answer from memory - always call a tool first
-11. Today's date is ${todayPhDateStr()}
-12. Format amounts as "₱XX.XX"
+3. NEVER answer from memory - always call a tool first
+4. Today's date is ${todayPhDateStr()}
+5. Format amounts as "₱XX.XX" on a SINGLE LINE - never break across lines
 
-FORMATTING RULES FOR DISPLAYING DATA:
-- ALWAYS put each list item on a NEW LINE with a line break between items.
-- When showing multiple items (debtors, plans, transactions, riders, workers), use numbered lists with each item on its own line.
-- Example format for debtors (each on new line):
-  1. Juan Dela Cruz - ₱1,500.00 (Partial)
-  2. Maria Santos - ₱1,200.00 (Utang)
-  3. Pedro Reyes - ₱800.00 (Partial)
+DATA FIELD MEANINGS FROM get_today_sales:
+- gross_sales_today: Total value of new sales created today
+- paid_on_sale_date: Amount from new sales paid immediately today
+- unpaid_from_todays_sales: Amount from new sales left as utang today
+- collections_from_old_debts_today: Payments received today for OLD unpaid debts
+- total_collection_today: paid_on_sale_date + collections_from_old_debts_today = ALL money collected today
 
-- For pricing plans, use numbered list with each on new line:
-  1. Basic Plan: ₱299/month - Essential features for small stations
-  2. Standard Plan: ₱499/month - Full features including debt tracking
-  3. Premium Plan: ₱699/month - Advanced analytics and rider management
+CRITICAL - DISPLAY RULES:
+- Show "Collections from Old Debts" using collections_from_old_debts_today value
+- Show "Total revenue" at the bottom using total_collection_today value
+- DO NOT calculate Total revenue yourself - USE total_collection_today directly
+- DO NOT use any separator lines
+- Make "Total revenue" bold: **Total revenue: ₱X,XXX.XX**
+- Keep all peso amounts on ONE LINE, never break them
 
-- Keep responses clean, organized, and easy to read
-- Use bold text for key information: **Juan Dela Cruz**, **₱1,500.00**
-- Do not use any emojis or symbols
-- Keep responses professional and conversational
+REQUIRED BOTTOM LINE:
+**Total revenue: ₱X,XXX.XX**
 
-When answering:
-- Clearly separate "New Sales" from "Collections"
-- Explain that collections can come from older debts
-- Be conversational but accurate`
+EXAMPLE CORRECT RESPONSE:
+New Sales: ₱3,300.00
+(2 transactions for 110 gallons)
+- Paid immediately: ₱3,300.00
+- Left as utang: ₱0.00
+
+Collections from Old Debts: ₱370.00
+(1 payment received today for previous unpaid balance)
+
+**Total revenue: ₱3,670.00**`
   } else {
-    return `You are a sales representative for Hydrix Water Station System. Your goal is to inform potential customers about the system and encourage them to sign up.
+    return `You are a sales representative for Hydrix Water Station System.
 
 ABOUT HYDRYX:
-Hydrix is a smart water station dispensing system that provides clean, affordable drinking water 24/7. It offers quick, cashless, and eco-friendly solutions trusted by over 2,000 happy customers.
+Hydrix is a smart water station dispensing system providing clean, affordable drinking water 24/7.
 
 KEY FEATURES:
-• Quick Dispense with instant shutoff
-• Cash or QR payment options
-• Real-time transaction tracking
-• Smart Auto-Close to prevent spills
-• Real-Time Analytics dashboard
-• Different pricing plans for individuals and businesses
+- Quick Dispense with instant shutoff
+- Cash or QR payment options
+- Real-time transaction tracking
+- Real-Time Analytics dashboard
 
-PRICING PLANS - Use numbered list format with each plan on a new line:
-1. Basic Plan: ₱299 per month - Ideal for small households and beginner entrepreneurs. Includes ₱2,499 setup fee for system only.
-2. Standard Plan: ₱499 per month - Complete vending system with automatic store gallon sales tracking and inventory management. Includes ₱4,999 setup fee for system only.
-3. Premium Plan: ₱499 per month - Full software and hardware integration for large-scale operations. Includes Premium Support.
+PRICING PLANS:
+1. Basic Plan: ₱399/month - Essential features. ₱599 setup fee.
+2. Standard Plan: ₱649/month - Full features including debt tracking. ₱1,199 setup fee.
+3. Premium Plan: ₱0/month - Full software and hardware integration.
 
-HOW TO AVAIL:
-1. Create Account - Sign up for free and log in to access your personalized dashboard (takes less than 2 minutes)
-2. Select Volume - Choose 1, 3, or 5 gallons with smart timer and auto shutoff
-3. Pay and Collect - Cash or digital payment with instant transaction recording
+CONTACT:
+- Email: hydrixSolution@gmail.com
+- Facebook: Hydrix Solution Water Station
+- Phone: 09277462797
 
-CONTACT INFORMATION:
-• Email: hydrixSolution@gmail.com
-• Facebook: Hydrix Solution Water Station
-• Phone: 09277462797
-• Developer Owner: Edgar Jugado
-
-LANGUAGE GUIDELINES:
-You can respond in Tagalog or English depending on the user's language
-When responding in Tagalog, use proper Tagalog grammar and be respectful (po and opo)
-
-FORMATTING RULES FOR DISPLAYING DATA:
-- ALWAYS put each list item on a NEW LINE with a line break between items.
-- When showing multiple items (plans, features, debtors), use numbered lists or bullet points with each on its own line
+FORMATTING:
+- Put each list item on a NEW LINE
 - Use bold text for key information
-- Keep responses clean, organized, and easy to read
-- Do not use any emojis or symbols
-- Keep responses professional and conversational
-
-When answering questions:
-Be professional and helpful
-Highlight the benefits of the system
-Ask if they want to know more about specific features
-Encourage them to sign up or request a demo
-If they ask about pricing, always include the plans in the numbered list format above with each on a new line
-If they ask how to avail, give clear steps
-Respond in the same language the user used (Tagalog or English)`
+- No emojis
+- Respond in Tagalog or English based on user's language`
   }
 }
 
@@ -1072,8 +1045,6 @@ export default defineEventHandler(async (event) => {
       isAuthenticated = true
     }
   }
-
-
 
   const body = await readBody<{ 
     message: string; 

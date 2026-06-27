@@ -62,7 +62,7 @@
               </p>
             </div>
             <p class="text-2xl font-black text-green-600 mt-1">{{ formatPeso(getTabPaidTotal(activeTab)) }}</p>
-            <p class="text-xs text-slate-400 mt-1 flex items-center gap-1"><CheckCircle :size="12" /> {{ getTabPaidCount(activeTab) }} fully paid · collected in selected range</p>
+            <p class="text-xs text-slate-400 mt-1 flex items-center gap-1"><CheckCircle :size="12" /> {{ getTabPaidCount(activeTab) }} fully paid · counted on date collected</p>
           </div>
           <div :class="['rounded-2xl border px-6 py-4', getTabUnpaidTotal(activeTab) > 0 ? 'bg-red-50 border-red-200' : 'bg-white border-slate-100']">
             <div class="flex items-center gap-2 mb-1">
@@ -620,12 +620,12 @@ import {
   AlertTriangle, Ban, Clock, User, Users, UserX, Calendar, DollarSign, Droplets,
   Banknote, FileText, Loader, Hash, Inbox, Minus, Plus, UserPlus, Save
 } from '@lucide/vue'
-import Navbar from '~/components/userPremium/Navbar.vue'
-import Sidebar from '~/components/userPremium/Sidebar.vue'
-import ChooseEdit from '~/components/userPremium/ChooseEdit.vue'
-import EditTransactionModal from '~/components/userPremium/EditTransactionModal.vue'
-import PasscodeVerify from '~/components/userPremium/PasscodeVerify.vue'
-import PasscodeSetup from '~/components/userPremium/PasscodeSetup.vue'
+import Navbar from '~/components/userBasic/Navbar.vue'
+import Sidebar from '~/components/userBasic/Sidebar.vue'
+import ChooseEdit from '~/components/userBasic/ChooseEdit.vue'
+import EditTransactionModal from '~/components/userBasic/EditTransactionModal.vue'
+import PasscodeVerify from '~/components/userBasic/PasscodeVerify.vue'
+import PasscodeSetup from '~/components/userBasic/PasscodeSetup.vue'
 import { useRoute } from '#app'
 
 const client = useSupabaseClient() as any
@@ -1259,6 +1259,37 @@ const openActionModal = (tx: Transaction) =>
   showActionModal.value = true
 }
 
+// Philippines is UTC+8 with no DST. The <input type="date"> values
+// (e.g. "2026-06-21") have no timezone info, and naive `new Date("2026-06-21")`
+// + setHours(...) anchors to the BROWSER/SERVER's local timezone — which may
+// not be Philippine time. That mismatch causes payments made in the early
+// Philippine morning to appear to "belong" to the previous UTC day, or vice
+// versa, even though to the person in Manila they clearly happened today.
+// These helpers explicitly compute the UTC instant that corresponds to
+// midnight and end-of-day in Philippine time (UTC+8), so the date filter
+// means what the calendar picker shows regardless of server/browser TZ.
+const PH_OFFSET_MS = 8 * 60 * 60 * 1000
+
+const phDayStartUTC = (dateStr: string) =>
+{
+  // "2026-06-21" -> 2026-06-21T00:00:00 PH time -> equivalent UTC instant
+  const parts = dateStr.split('-')
+  const y = Number(parts[0] ?? 0)
+  const m = Number(parts[1] ?? 1)
+  const d = Number(parts[2] ?? 1)
+  return new Date(Date.UTC(y, m - 1, d, 0, 0, 0, 0) - PH_OFFSET_MS)
+}
+
+const phDayEndUTC = (dateStr: string) =>
+{
+  // "2026-06-21" -> 2026-06-21T23:59:59.999 PH time -> equivalent UTC instant
+  const parts = dateStr.split('-')
+  const y = Number(parts[0] ?? 0)
+  const m = Number(parts[1] ?? 1)
+  const d = Number(parts[2] ?? 1)
+  return new Date(Date.UTC(y, m - 1, d, 23, 59, 59, 999) - PH_OFFSET_MS)
+}
+
 const filteredTransactions = computed(() =>
 {
   const tabTxs = getTabTransactions(activeTab.value)
@@ -1270,14 +1301,12 @@ const applyDateFilter = (list: Transaction[]) =>
   let filtered = [...list]
   if (startDate.value)
   {
-    const start = new Date(startDate.value)
-    start.setHours(0, 0, 0, 0)
+    const start = phDayStartUTC(startDate.value)
     filtered = filtered.filter(t => new Date(t.created_at) >= start)
   }
   if (endDate.value)
   {
-    const end = new Date(endDate.value)
-    end.setHours(23, 59, 59, 999)
+    const end = phDayEndUTC(endDate.value)
     filtered = filtered.filter(t => new Date(t.created_at) <= end)
   }
   return filtered
@@ -1290,58 +1319,83 @@ const getTabTransactions = (tabId: string) =>
   return transactions.value.filter(t => t.rider_id === tabId)
 }
 
+// Returns the set of transaction ids belonging to a tab (rider/unassigned/all),
+// used to scope debt_payments rows to the right tab via their transaction_id.
+const getTabTransactionIds = (tabId: string) =>
+{
+  return new Set(getTabTransactions(tabId).map(t => t.id))
+}
+
+// Revenue is counted on the date the MONEY WAS COLLECTED (debt_payments.paid_at),
+// not the date the transaction was created. Every peso ever collected — whether
+// paid in full immediately at dispense, or paid off later as a utang/partial
+// top-up — has exactly one debt_payments row dated by when it actually came in.
+// This means: if a June 20 sale leaves ₱300 utang, and that ₱300 gets paid on
+// June 21, it counts toward June 21's revenue, not June 20's — exactly matching
+// real cash-flow / "sales for today" accounting. Dates are compared using
+// Philippine time (see phDayStartUTC/phDayEndUTC above) so "June 21" in the
+// filter always means June 21 in Manila, not June 21 in UTC or server time.
+const applyDateFilterToPayments = (list: DebtPayment[]) =>
+{
+  let filtered = [...list]
+  if (startDate.value)
+  {
+    const start = phDayStartUTC(startDate.value)
+    filtered = filtered.filter(p => new Date(p.paid_at) >= start)
+  }
+  if (endDate.value)
+  {
+    const end = phDayEndUTC(endDate.value)
+    filtered = filtered.filter(p => new Date(p.paid_at) <= end)
+  }
+  return filtered
+}
+
+const getTabPayments = (tabId: string) =>
+{
+  const ids = getTabTransactionIds(tabId)
+  return debtPayments.value.filter(p => ids.has(p.transaction_id))
+}
+
 // Date-filtered collected revenue — respects startDate/endDate so picking a
-// range (e.g. June 12, 2026 to June 13, 2026) changes the "Total Revenue" card
-// to only reflect money collected within that window.
-// Uses the same collection logic as the Sales page:
-// - 'paid'    -> full total_amount (fallback if amount_paid wasn't backfilled)
-// - 'partial' -> only the amount_paid portion collected so far
-// - 'utang'   -> ₱0
+// range (e.g. June 20, 2026 to June 21, 2026) shows only money actually
+// collected within that window, regardless of which day the original sale
+// happened on.
 const getTabPaidTotal = (tabId: string) =>
 {
-  const txs = applyDateFilter(getTabTransactions(tabId))
-  return txs.reduce((s, t) => s + getCollectedAmount(t), 0)
+  const payments = applyDateFilterToPayments(getTabPayments(tabId))
+  return payments.reduce((s, p) => s + Number(p.amount_paid), 0)
 }
 
+// Number of distinct transactions that became fully 'paid' and had at least
+// one collection event within the selected date range.
 const getTabPaidCount = (tabId: string) =>
 {
-  const txs = applyDateFilter(getTabTransactions(tabId))
-  return txs.filter(t => t.payment_status === 'paid').length
+  const ids = getTabTransactionIds(tabId)
+  const payments = applyDateFilterToPayments(getTabPayments(tabId))
+  const paidTxIds = new Set(
+    transactions.value
+      .filter(t => ids.has(t.id) && t.payment_status === 'paid')
+      .map(t => t.id)
+  )
+  const txIdsWithPaymentInRange = new Set(payments.map(p => p.transaction_id))
+  let count = 0
+  paidTxIds.forEach(id => { if (txIdsWithPaymentInRange.has(id)) count++ })
+  return count
 }
 
-// All-time collected revenue — mirrors the Sales page exactly:
-// - only counts rows where status === 'completed' (same .eq('status','completed')
-//   filter the Sales page uses), otherwise the two pages will never agree
-// - 'paid'    -> full total_amount counts (fallback to total_amount if amount_paid
-//                wasn't backfilled on older rows)
-// - 'partial' -> only the amount_paid portion counts (money actually collected)
-// - 'utang'   -> ₱0, nothing has been collected yet
-// Ignores startDate/endDate so it always reflects every peso collected,
-// old to new, regardless of whatever date range is selected above.
-const getCollectedAmount = (t: Transaction) =>
-{
-  if (t.status !== 'completed') return 0
-  if (t.payment_status === 'paid')
-  {
-    return Number(t.amount_paid) === 0 ? Number(t.total_amount) : Number(t.amount_paid)
-  }
-  if (t.payment_status === 'partial')
-  {
-    return Number(t.amount_paid)
-  }
-  return 0
-}
-
+// All-time collected revenue — same ledger logic, ignoring the date filter so
+// it always reflects every peso ever collected, old to new.
 const getTabPaidTotalAllTime = (tabId: string) =>
 {
-  const txs = getTabTransactions(tabId)
-  return txs.reduce((s, t) => s + getCollectedAmount(t), 0)
+  const payments = getTabPayments(tabId)
+  return payments.reduce((s, p) => s + Number(p.amount_paid), 0)
 }
 
 const getTabPaidCountAllTime = (tabId: string) =>
 {
-  const txs = getTabTransactions(tabId)
-  return txs.filter(t => t.payment_status === 'paid' && t.status === 'completed').length
+  const ids = getTabTransactionIds(tabId)
+  return transactions.value.filter(t => ids.has(t.id) && t.payment_status === 'paid').length
 }
 
 const getTabUnpaidTotal = (tabId: string) =>
@@ -1375,7 +1429,8 @@ const formatDate = (d: string) =>
     day: 'numeric',
     year: 'numeric',
     hour: '2-digit',
-    minute: '2-digit'
+    minute: '2-digit',
+    timeZone: 'Asia/Manila'
   })
 
 const formatPeso = (n: number) =>

@@ -63,7 +63,7 @@ const SETUP_FEE: Record<string, number> = {
   premium: 80000,
 }
 const MONTHLY_FEE: Record<string, number> = {
-  basic: 449,
+  basic: 399,
   standard: 649,
   premium: 0,
 }

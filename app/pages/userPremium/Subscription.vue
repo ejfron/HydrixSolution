@@ -59,13 +59,13 @@ const paymentHistory = ref<PaymentHistory[]>([])
 const loading = ref(true)
 
 const SETUP_FEE: Record<string, number> = {
-  basic: 2500,
-  standard: 5000,
+  basic: 599,
+  standard: 1199,
   premium: 80000,
 }
 const MONTHLY_FEE: Record<string, number> = {
-  basic: 500,
-  standard: 500,
+  basic: 399,
+  standard: 649,
   premium: 0,
 }
 

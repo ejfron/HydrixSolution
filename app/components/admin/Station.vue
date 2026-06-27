@@ -45,7 +45,7 @@ const showPassword = ref(false)
 
 // ==================== NEW PLAN CONFIG ====================
 const PLAN_CONFIG = {
-  basic:    { setupFee: 599,  monthlyFee: 449, label: 'Basic',    color: 'blue',   icon: 'Shield' },
+  basic:    { setupFee: 599,  monthlyFee: 399, label: 'Basic',    color: 'blue',   icon: 'Shield' },
   standard: { setupFee: 1199,  monthlyFee: 649, label: 'Standard', color: 'green',  icon: 'Star' },
   premium:  { setupFee: 80000, monthlyFee: 0,   label: 'Premium',  color: 'violet', icon: 'Crown' },
 }
@@ -534,7 +534,7 @@ onMounted(() => fetchUsers())
                   </div>
                   <div v-else class="bg-green-50 rounded-xl px-3 py-2 border border-green-100 mt-2">
                     <p class="text-green-700 font-semibold text-[11px]">
-                      ✓ Setup fee collected upfront — then ₱449/month ongoing
+                      ✓ Setup fee collected upfront — then ₱399/month ongoing
                     </p>
                   </div>
                 </div>
