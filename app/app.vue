@@ -26,8 +26,8 @@ const canAccessSalesAssistant = computed(() => {
       <NuxtRouteAnnouncer />
       <NuxtPage />
     
-      <SalesAssistant v-if="canAccessSalesAssistant && !isLoading" />
-        <SalesAssistant v-else-if="route.path === '/'" />
+        <SalesAssistant v-if="canAccessSalesAssistant && !isLoading" class="md:bottom-5 bottom-17 "/>
+        <SalesAssistant v-else-if="route.path === '/'" class="bottom-5"/>
     </NuxtLayout>
   </div>
 </template>

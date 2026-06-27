@@ -147,7 +147,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="sales-assistant-wrapper md:bottom-5 fixed bottom-17 right-5 z-[9999] flex flex-col items-end gap-3 pointer-events-none">
+  <div class="sales-assistant-wrapper  fixed right-5 z-[9999] flex flex-col items-end gap-3 pointer-events-none">
     <Transition
       enter-active-class="transition ease-out duration-200"
       enter-from-class="opacity-0 translate-y-4 scale-95"
