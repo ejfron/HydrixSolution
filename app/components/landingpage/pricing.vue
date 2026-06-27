@@ -67,7 +67,7 @@
           <div
             class="absolute flex gap-1 items-center justify-center top-0 right-0 bg-primary-600 text-white px-4 py-1.5 text-xs font-bold rounded-bl-2xl"
           >
-            <span>
+            <span> 
               <Flame :size="20" />
             </span>
 

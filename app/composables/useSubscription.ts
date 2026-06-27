@@ -1,3 +1,4 @@
+// composables/useSubscription.ts
 import { useSupabaseClient } from '#imports'
 
 export const useSubscription = () => {
@@ -7,24 +8,35 @@ export const useSubscription = () => {
   const isExpired = ref(false)
   const nextPaymentDate = ref<string | null>(null)
   const daysRemaining = ref(0)
+  const plan = ref<string | null>(null) // Add plan tracking
+  const isLoading = ref(true) // Add loading state
 
   const checkSubscription = async () => {
     const { data: { session } } = await client.auth.getSession()
     const userId = user.value?.id ?? session?.user?.id
-    if (!userId) return
+    if (!userId) {
+      isLoading.value = false
+      return
+    }
 
     const { data } = await (client.from('profiles') as any)
       .select('subscription_status, next_payment_date, plan')
       .eq('id', userId)
       .single()
 
-    if (!data) return
+    if (!data) {
+      isLoading.value = false
+      return
+    }
+
+    plan.value = data.plan // Store the plan
 
     // Premium plan never expires
     if (data.plan === 'premium') {
       isExpired.value = false
       daysRemaining.value = 9999
       nextPaymentDate.value = null
+      isLoading.value = false
       return
     }
 
@@ -33,6 +45,7 @@ export const useSubscription = () => {
     if (!data.next_payment_date) {
       isExpired.value = false
       daysRemaining.value = 30
+      isLoading.value = false
       return
     }
 
@@ -51,7 +64,9 @@ export const useSubscription = () => {
         .eq('id', userId)
       isExpired.value = true
     }
+
+    isLoading.value = false
   }
 
-  return { isExpired, nextPaymentDate, daysRemaining, checkSubscription }
+  return { isExpired, nextPaymentDate, daysRemaining, plan, isLoading, checkSubscription }
 }

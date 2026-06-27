@@ -1,6 +1,17 @@
+<!-- app.vue -->
 <script setup lang="ts">
 import SalesAssistant from './components/shared/SalesAssistant.vue';
 
+const { plan, isLoading, checkSubscription } = useSubscription();
+
+onMounted(() => {
+  checkSubscription();
+});
+
+
+const canAccessSalesAssistant = computed(() => {
+  return plan.value === 'standard' || plan.value === 'premium';
+});
 </script>
 
 <template>
@@ -8,8 +19,8 @@ import SalesAssistant from './components/shared/SalesAssistant.vue';
     <NuxtLayout>
       <NuxtRouteAnnouncer />
       <NuxtPage />
-      <SalesAssistant />
-    </NuxtLayout>
     
+      <SalesAssistant v-if="canAccessSalesAssistant && !isLoading" />
+    </NuxtLayout>
   </div>
 </template>
