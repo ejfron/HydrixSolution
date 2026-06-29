@@ -147,7 +147,7 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="sales-assistant-wrapper  fixed right-5 z-[9999] flex flex-col items-end gap-3 pointer-events-none">
+  <div class="sales-assistant-wrapper  fixed right-5 z-9999 flex flex-col items-end gap-3 pointer-events-none">
     <Transition
       enter-active-class="transition ease-out duration-200"
       enter-from-class="opacity-0 translate-y-4 scale-95"
@@ -158,9 +158,9 @@ onMounted(async () => {
     >
       <div
         v-if="isOpen"
-        class="pointer-events-auto w-[92vw] max-w-sm h-[70vh] max-h-[600px] flex flex-col bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden"
+        class="pointer-events-auto w-[92vw] max-w-sm h-[70vh] max-h-150 flex flex-col bg-white rounded-3xl border border-slate-200 shadow-2xl overflow-hidden"
       >
-        <div class="px-5 py-4 bg-gradient-to-r from-green-600 to-green-500 flex items-center justify-between gap-2 shrink-0">
+        <div class="px-5 py-4 bg-linear-to-r from-green-600 to-green-500 flex items-center justify-between gap-2 shrink-0">
           <div class="flex items-center gap-2">
             <div class="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center">
               <Sparkles :size="16" class="text-white" />

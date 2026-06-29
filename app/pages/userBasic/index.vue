@@ -166,7 +166,7 @@ onActivated(async () => {
 </script>
 
 <template>
-  <div class="min-h-screen bg-[#f5f7fb] flex">
+  <div class="min-h-screen bg-[#f5f7fb] flex" >
     <Sidebar />
     <main class="flex-1 min-w-0">
       <Navbar />

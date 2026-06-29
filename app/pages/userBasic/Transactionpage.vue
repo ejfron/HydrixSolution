@@ -1,7 +1,7 @@
 <template>
   <div class="min-h-screen bg-[#f5f7fb] flex">
     <Sidebar />
-    <main class="flex-1 min-w-0">
+    <main class="flex-1 min-w-0 pb-32 ">
       <Navbar />
 
       <div class="p-4 sm:p-8 space-y-6">

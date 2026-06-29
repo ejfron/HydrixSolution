@@ -425,7 +425,7 @@
           </button>
         </div>
 
-        <div v-else class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
+        <div v-else class="grid pb-32 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-5">
           <div v-for="g in gallonTypes" :key="g.id"
             class="group relative bg-white rounded-3xl border border-slate-200 overflow-hidden shadow-sm hover:shadow-lg transition-all duration-300">
             <div class="absolute top-0 left-0 w-full h-0.5 bg-green-600" />

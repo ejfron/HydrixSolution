@@ -179,9 +179,6 @@ onMounted(() => {
     </div>
   </div>
 
-  <!-- Spacer for mobile bottom nav -->
-  <div class="md:hidden h-16"></div>
-
   <!-- Mobile sidebar overlay -->
   <div
     v-if="isMobileSidebarOpen"
