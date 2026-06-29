@@ -23,7 +23,7 @@ const loadChatHistory = async () => {
     messages.value = [{
       role: 'assistant',
       content: 'Welcome to Hydrix Water Station System! I can help you learn about our services, pricing, and how to get started. What would you like to know?'
-    }]
+    }] 
     return
   }
 

@@ -35,7 +35,7 @@ const handleLogout = async () => {
 // Main menu items for desktop sidebar - BASIC
 const mainMenu = [
   { name: 'Dashboard', path: '/userBasic', icon: Home },
-  { name: 'DispensePage', path: '/userBasic/dispense', icon: Droplets },
+  { name: 'LogBook', path: '/userBasic/dispense', icon: Droplets },
   { name: 'Salespage', path: '/userBasic/salespage', icon: Building2 },
   { name: 'Riders', path: '/userBasic/riders', icon: Bike },
   { name: 'Transactions', path: '/userBasic/transactionpage', icon: ReceiptText },
@@ -49,12 +49,12 @@ const mainMenu = [
 // Mobile bottom navigation items - BASIC
 const bottomNavItems = [
   { name: 'Dashboard', path: '/userBasic', icon: Home },
-  { name: 'Dispense', path: '/userBasic/dispense', icon: Droplets },
+  { name: 'LogBook', path: '/userBasic/dispense', icon: Droplets },
   { name: 'Sales', path: '/userBasic/salespage', icon: Building2 },
   { name: 'Riders', path: '/userBasic/riders', icon: Bike },
   { name: 'Transactions', path: '/userBasic/transactionpage', icon: ReceiptText },
   { name: 'Reports', path: '/userBasic/reports', icon: BarChart3 },
-  { name: 'Customers', path: '/userBasic/workers', icon: Users2 },
+  { name: 'Workers', path: '/userBasic/workers', icon: Users2 },
   { name: 'Subscription', path: '/userBasic/subscription', icon: HandCoins },
   { name: 'Chat', path: '/userBasic/chatuser', icon: MessageCircle },
   { name: 'Help', path: '/userBasic/HelpGuide', icon: MessageCircleQuestionMark },

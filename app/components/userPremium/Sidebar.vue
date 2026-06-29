@@ -35,7 +35,7 @@ const handleLogout = async () => {
 // Main menu items for desktop sidebar - PREMIUM
 const mainMenu = [
   { name: 'Dashboard', path: '/userPremium', icon: Home },
-  { name: 'DispensePage', path: '/userPremium/dispense', icon: Droplets },
+  { name: 'LogBook', path: '/userPremium/dispense', icon: Droplets },
   { name: 'Salespage', path: '/userPremium/salespage', icon: Building2 },
   { name: 'Riders', path: '/userPremium/riders', icon: Bike },
   { name: 'Transactions', path: '/userPremium/transactionpage', icon: ReceiptText },
@@ -49,7 +49,7 @@ const mainMenu = [
 // Mobile bottom navigation items - PREMIUM
 const bottomNavItems = [
   { name: 'Dashboard', path: '/userPremium', icon: Home },
-  { name: 'Dispense', path: '/userPremium/dispense', icon: Droplets },
+  { name: 'LogBook', path: '/userPremium/dispense', icon: Droplets },
   { name: 'Sales', path: '/userPremium/salespage', icon: Building2 },
   { name: 'Riders', path: '/userPremium/riders', icon: Bike },
   { name: 'Transactions', path: '/userPremium/transactionpage', icon: ReceiptText },
