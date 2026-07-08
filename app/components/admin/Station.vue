@@ -1,234 +1,3 @@
-<script setup lang="ts">
-import { Plus, Settings, Droplets, Trash2, X, AlertTriangle, MapPin, RefreshCw, Crown, Shield, Star } from '@lucide/vue'
-import { useSupabaseClient } from '#imports'
-
-const client = useSupabaseClient()
-
-type Profile = {
-  id: string
-  full_name: string
-  station_name: string
-  email: string
-  role: string
-  plan: string
-  location: string
-  created_at: string
-  subscription_status: string
-  next_payment_date: string | null
-}
-
-type Transaction = {
-  user_id: string
-  quantity: number
-  total_amount: number
-}
-
-const users = ref<(Profile & { total_sales: number; total_gallons: number })[]>([])
-
-const loading = ref(true)
-const showCreateModal = ref(false)
-const creating = ref(false)
-const createError = ref('')
-const createSuccess = ref('')
-
-const showDeleteModal = ref(false)
-const deletingId = ref<string | null>(null)
-const deletingName = ref('')
-const deleting = ref(false)
-
-const newFullName = ref('')
-const newStationName = ref('')
-const newEmail = ref('')
-const newLocation = ref('')
-const newPassword = ref('')
-const showPassword = ref(false)
-
-// ==================== NEW PLAN CONFIG ====================
-const PLAN_CONFIG = {
-  basic:    { setupFee: 599,  monthlyFee: 399, label: 'Basic',    color: 'blue',   icon: 'Shield' },
-  standard: { setupFee: 1199,  monthlyFee: 649, label: 'Standard', color: 'green',  icon: 'Star' },
-  premium:  { setupFee: 80000, monthlyFee: 0,   label: 'Premium',  color: 'violet', icon: 'Crown' },
-}
-
-const newPlan = ref<'basic' | 'standard' | 'premium'>('basic')
-
-const selectedPlanConfig = computed(() => PLAN_CONFIG[newPlan.value])
-
-const resetForm = () => {
-  newFullName.value = ''
-  newStationName.value = ''
-  newEmail.value = ''
-  newPassword.value = ''
-  newLocation.value = ''
-  newPlan.value = 'basic'
-  createError.value = ''
-  createSuccess.value = ''
-  showPassword.value = false
-}
-
-const openModal = () => { resetForm(); showCreateModal.value = true }
-const closeModal = () => { showCreateModal.value = false; resetForm() }
-
-const fetchUsers = async () => {
-  loading.value = true
-
-  const { data: profiles } = await client
-    .from('profiles')
-    .select('id, full_name, station_name, email, role, plan, location, created_at, subscription_status, next_payment_date')
-    .eq('role', 'user')
-    .order('created_at', { ascending: false })
-    .returns<Profile[]>()
-
-  if (!profiles) { loading.value = false; return }
-
-  const { data: transactions } = await client
-    .from('transactions')
-    .select('user_id, quantity, total_amount')
-    .eq('status', 'completed')
-    .returns<Transaction[]>()
-
-  const totalsMap: Record<string, { sales: number; gallons: number }> = {}
-
-  if (transactions) {
-    for (const t of transactions) {
-      if (!totalsMap[t.user_id]) totalsMap[t.user_id] = { sales: 0, gallons: 0 }
-      totalsMap[t.user_id]!.sales += Number(t.total_amount)
-      totalsMap[t.user_id]!.gallons += Number(t.quantity)
-    }
-  }
-
-  users.value = profiles.map(p => ({
-    ...p,
-    total_sales: totalsMap[p.id]?.sales ?? 0,
-    total_gallons: totalsMap[p.id]?.gallons ?? 0,
-  }))
-
-  loading.value = false
-}
-
-const createUser = async () => {
-  if (!newEmail.value || !newPassword.value || !newStationName.value || !newLocation.value) {
-    createError.value = 'Please fill in all required fields.'
-    return
-  }
-
-  creating.value = true
-  createError.value = ''
-  createSuccess.value = ''
-
-  const today = new Date()
-  const subscriptionStart = today.toLocaleDateString('en-CA')
-  const nextPayment = new Date(today)
-  nextPayment.setMonth(nextPayment.getMonth() + 1)
-  const nextPaymentDate = nextPayment.toLocaleDateString('en-CA')
-
-  try {
-    await $fetch('/api/create-user', {
-      method: 'POST',
-      body: {
-        email: newEmail.value,
-        password: newPassword.value,
-        fullName: newFullName.value,
-        stationName: newStationName.value,
-        location: newLocation.value,
-        subscriptionStart,
-        nextPaymentDate,
-        plan: newPlan.value,
-        // New model: setup fee as downpayment, 500/mo ongoing
-        downpayment: selectedPlanConfig.value.setupFee,
-        paymentMonths: 0, // no fixed end — ongoing monthly
-      }
-    })
-
-    createSuccess.value = `Account for ${newStationName.value} created successfully!`
-    creating.value = false
-
-    setTimeout(async () => {
-      await fetchUsers()
-      closeModal()
-    }, 1500)
-  } catch (err: any) {
-    createError.value = err.data?.message || err.message || 'Failed to create user'
-    creating.value = false
-  }
-}
-
-// Renew = extend next_payment_date by 1 month
-const renewSubscription = async (userId: string) => {
-  // Get current next_payment_date
-  const user = users.value.find(u => u.id === userId)
-  let baseDate = new Date()
-
-  if (user?.next_payment_date) {
-    baseDate = new Date(user.next_payment_date + 'T00:00:00')
-    // If already past due, extend from today instead
-    if (baseDate < new Date()) baseDate = new Date()
-  }
-
-  baseDate.setMonth(baseDate.getMonth() + 1)
-  const newDate = baseDate.toLocaleDateString('en-CA')
-
-  await (client.from('profiles') as any)
-    .update({
-      next_payment_date: newDate,
-      subscription_status: 'active',
-    })
-    .eq('id', userId)
-
-  await fetchUsers()
-}
-
-const confirmDelete = (id: string, name: string) => {
-  deletingId.value = id
-  deletingName.value = name
-  showDeleteModal.value = true
-}
-
-const deleteUser = async () => {
-  if (!deletingId.value) return
-  deleting.value = true
-
-  const { error } = await client.rpc('delete_user_by_id', { user_id: deletingId.value } as any)
-
-  if (error) { deleting.value = false; return }
-
-  users.value = users.value.filter(u => u.id !== deletingId.value)
-  showDeleteModal.value = false
-  deletingId.value = null
-  deletingName.value = ''
-  deleting.value = false
-}
-
-const cancelDelete = () => {
-  showDeleteModal.value = false
-  deletingId.value = null
-  deletingName.value = ''
-}
-
-// Plan badge styles
-const planBadgeClass = (plan: string) => {
-  if (plan === 'premium') return 'bg-violet-100 text-violet-700'
-  if (plan === 'standard') return 'bg-green-100 text-green-700'
-  return 'bg-blue-100 text-blue-700'
-}
-
-// Days remaining helper
-const getDaysRemaining = (nextPaymentDate: string | null) => {
-  if (!nextPaymentDate) return null
-  const today = new Date()
-  today.setHours(0, 0, 0, 0)
-  const due = new Date(nextPaymentDate + 'T00:00:00')
-  return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
-}
-
-const formatDate = (d: string) =>
-  new Date(d + 'T00:00:00').toLocaleDateString('en-PH', {
-    month: 'short', day: 'numeric', year: 'numeric'
-  })
-
-onMounted(() => fetchUsers())
-</script>
-
 <template>
   <div class="relative w-full overflow-hidden p-3 sm:p-4">
     <div class="relative z-10">
@@ -283,7 +52,6 @@ onMounted(() => fetchUsers())
                   <MapPin :size="10" class="shrink-0" />
                   {{ user.location || 'No location' }}
                 </p>
-                <!-- Plan Badge -->
                 <span :class="['inline-block mt-1 px-2 py-0.5 rounded-lg text-[10px] font-black uppercase', planBadgeClass(user.plan)]">
                   {{ user.plan || 'basic' }}
                 </span>
@@ -308,12 +76,21 @@ onMounted(() => fetchUsers())
               <span class="text-xs text-slate-500 shrink-0">Email</span>
               <span class="text-sm text-slate-700 truncate max-w-40 text-right">{{ user.email }}</span>
             </div>
+            <!-- Monthly Installment – now shows actual value from subscription -->
             <div class="flex items-center justify-between gap-2">
-  <span class="text-xs text-slate-500 shrink-0">Monthly Fee</span>
-  <span class="text-sm font-bold text-slate-700">
-    {{ user.plan === 'premium' ? 'Lifetime' : `₱${PLAN_CONFIG[user.plan as 'basic' | 'standard']?.monthlyFee ?? 500}/mo` }}
-  </span>
-</div>
+              <span class="text-xs text-slate-500 shrink-0">Monthly Installment</span>
+              <span class="text-sm font-bold text-slate-700">
+                <template v-if="user.monthly_due !== null && user.monthly_due !== undefined">
+                  ₱{{ Number(user.monthly_due).toFixed(2) }}/mo
+                  <span v-if="(user.payment_months ?? 0) > 0" class="text-xs font-normal text-slate-400">
+                    ({{ user.payment_months }} months)
+                  </span>
+                </template>
+                <template v-else>
+                  —
+                </template>
+              </span>
+            </div>
             <div class="flex items-center justify-between gap-2">
               <span class="text-xs text-slate-500 shrink-0">Joined</span>
               <span class="text-sm text-slate-700 text-right">
@@ -338,7 +115,7 @@ onMounted(() => fetchUsers())
                 <span class="font-bold">
                   {{ user.subscription_status === 'active' ? '✓ Active' : '✕ Expired' }}
                 </span>
-                <span v-if="user.plan !== 'premium'" class="text-[10px] opacity-70">
+                <span v-if="(user.payment_months ?? 0) > 0 || user.plan !== 'premium'" class="text-[10px] opacity-70">
                   {{
                     getDaysRemaining(user.next_payment_date) !== null
                       ? getDaysRemaining(user.next_payment_date)! > 0
@@ -349,7 +126,7 @@ onMounted(() => fetchUsers())
                 </span>
                 <span v-else class="text-[10px] opacity-70">Lifetime Access</span>
               </div>
-              <div v-if="user.plan !== 'premium'" class="flex items-center justify-between">
+              <div v-if="(user.payment_months ?? 0) > 0 || user.plan !== 'premium'" class="flex items-center justify-between">
                 <span class="opacity-70">Next payment</span>
                 <span>{{ user.next_payment_date ? formatDate(user.next_payment_date) : '—' }}</span>
               </div>
@@ -489,7 +266,7 @@ onMounted(() => fetchUsers())
                     <button
                       v-for="(config, key) in PLAN_CONFIG" :key="key"
                       type="button"
-                      @click="newPlan = key as any"
+                      @click="switchPlan(key as 'basic' | 'standard' | 'premium')"
                       :class="[
                         'py-3 px-2 rounded-2xl border-2 text-xs font-bold transition cursor-pointer text-center',
                         newPlan === key
@@ -498,44 +275,68 @@ onMounted(() => fetchUsers())
                       ]"
                     >
                       <p>{{ config.label }}</p>
-                      <p class="font-normal opacity-70 mt-0.5">₱{{ config.setupFee.toLocaleString() }}</p>
+                      <p class="font-normal opacity-70 mt-0.5">₱{{ config.totalPrice.toLocaleString() }}</p>
                     </button>
                   </div>
                 </div>
 
-                <!-- Plan Details -->
+                <!-- Downpayment Input -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-2">
+                    Downpayment <span class="text-red-400">*</span>
+                    <span class="font-normal text-gray-400 text-xs">(min ₱{{ selectedPlanConfig.minDownpayment.toLocaleString() }})</span>
+                  </label>
+                  <input
+                    v-model.number="newDownpayment"
+                    type="number"
+                    :min="selectedPlanConfig.minDownpayment"
+                    :max="selectedPlanConfig.totalPrice"
+                    step="1"
+                    class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  />
+                </div>
+
+                <!-- Payment Months (dropdown) for ALL plans -->
+                <div>
+                  <label class="block text-sm font-semibold text-gray-700 mb-2">
+                    Payment Months <span class="text-red-400">*</span>
+                    <span class="font-normal text-gray-400 text-xs">({{ selectedPlanConfig.minMonths }} – {{ selectedPlanConfig.maxMonths }})</span>
+                  </label>
+                  <select
+                    v-model.number="newPaymentMonths"
+                    class="w-full bg-gray-50 border border-gray-200 rounded-2xl px-4 py-3 text-gray-700 focus:outline-none focus:ring-2 focus:ring-green-500 text-sm"
+                  >
+                    <option
+                      v-for="m in monthOptions"
+                      :key="m"
+                      :value="m"
+                    >
+                      {{ m }} month{{ m > 1 ? 's' : '' }}
+                    </option>
+                  </select>
+                  <p class="text-xs text-slate-400 mt-1">
+                    Monthly due: ₱{{ ((selectedPlanConfig.totalPrice - newDownpayment) / newPaymentMonths).toFixed(2) }}
+                  </p>
+                </div>
+
+                <!-- Plan Details Summary -->
                 <div class="bg-slate-50 rounded-2xl p-4 border border-slate-100 text-xs space-y-2">
                   <p class="font-bold text-slate-700 mb-2">{{ selectedPlanConfig.label }} Plan Details</p>
                   <div class="flex justify-between">
-                    <span class="text-slate-500">Setup Fee (one-time)</span>
-                    <span class="font-bold text-slate-700">₱{{ selectedPlanConfig.setupFee.toLocaleString() }}</span>
+                    <span class="text-slate-500">Total Price</span>
+                    <span class="font-bold text-slate-700">₱{{ selectedPlanConfig.totalPrice.toLocaleString() }}</span>
                   </div>
                   <div class="flex justify-between">
-                    <span class="text-slate-500">Monthly Fee</span>
-                    <span class="font-bold text-slate-700">
-                      {{ selectedPlanConfig.monthlyFee === 0 ? 'Free (Lifetime)' : `₱${selectedPlanConfig.monthlyFee}/mo` }}
-                    </span>
+                    <span class="text-slate-500">Downpayment</span>
+                    <span class="font-bold text-green-600">₱{{ newDownpayment.toLocaleString() }}</span>
                   </div>
                   <div class="flex justify-between border-t border-slate-200 pt-2 mt-1">
-                    <span class="text-slate-500">First Payment Due</span>
-                    <span class="font-bold text-green-600">
-                      {{ new Date(new Date().setMonth(new Date().getMonth() + 1)).toLocaleDateString('en-PH', { month: 'short', day: 'numeric', year: 'numeric' }) }}
-                    </span>
+                    <span class="text-slate-500">Remaining Balance</span>
+                    <span class="font-bold text-slate-700">₱{{ (selectedPlanConfig.totalPrice - newDownpayment).toLocaleString() }}</span>
                   </div>
-                  <div v-if="newPlan === 'premium'" class="bg-violet-50 rounded-xl px-3 py-2 border border-violet-100 mt-2">
-                    <p class="text-violet-700 font-semibold text-[11px]">
-                      ✓ Premium users pay setup fee only — no monthly charges
-                    </p>
-                  </div>
-                  <div v-else-if="newPlan === 'standard'" class="bg-green-50 rounded-xl px-3 py-2 border border-green-100 mt-2">
-                    <p class="text-green-700 font-semibold text-[11px]">
-                      ✓ Setup fee collected upfront — then ₱649/month ongoing
-                    </p>
-                  </div>
-                  <div v-else class="bg-green-50 rounded-xl px-3 py-2 border border-green-100 mt-2">
-                    <p class="text-green-700 font-semibold text-[11px]">
-                      ✓ Setup fee collected upfront — then ₱399/month ongoing
-                    </p>
+                  <div class="flex justify-between">
+                    <span class="text-slate-500">Monthly Installment</span>
+                    <span class="font-bold text-blue-600">₱{{ ((selectedPlanConfig.totalPrice - newDownpayment) / newPaymentMonths).toFixed(2) }}</span>
                   </div>
                 </div>
 
@@ -574,6 +375,325 @@ onMounted(() => fetchUsers())
     </Transition>
   </div>
 </template>
+
+<script setup lang="ts">
+import { Plus, Settings, Droplets, Trash2, X, AlertTriangle, MapPin, RefreshCw, Crown, Shield, Star } from '@lucide/vue'
+import { useSupabaseClient } from '#imports'
+
+const client = useSupabaseClient()
+
+type Profile = {
+  id: string
+  full_name: string
+  station_name: string
+  email: string
+  role: string
+  plan: string
+  location: string
+  created_at: string
+  subscription_status: string
+  next_payment_date: string | null
+}
+
+type Transaction = {
+  user_id: string
+  quantity: number
+  total_amount: number
+}
+
+// Type for subscription data fetched
+type SubscriptionData = {
+  user_id: string
+  monthly_due: number | null
+  payment_months: number | null
+}
+
+// Extended user type with subscription data
+type UserWithSubscription = Profile & {
+  total_sales: number
+  total_gallons: number
+  monthly_due?: number | null
+  payment_months?: number | null
+}
+
+const users = ref<UserWithSubscription[]>([])
+const loading = ref(true)
+const showCreateModal = ref(false)
+const creating = ref(false)
+const createError = ref('')
+const createSuccess = ref('')
+
+const showDeleteModal = ref(false)
+const deletingId = ref<string | null>(null)
+const deletingName = ref('')
+const deleting = ref(false)
+
+const newFullName = ref('')
+const newStationName = ref('')
+const newEmail = ref('')
+const newLocation = ref('')
+const newPassword = ref('')
+const showPassword = ref(false)
+
+// ==================== PLAN CONFIG ====================
+const PLAN_CONFIG = {
+  basic: {
+    totalPrice: 10000,
+    minDownpayment: 599,
+    minMonths: 3,
+    maxMonths: 7,
+    label: 'Basic',
+    color: 'blue',
+    icon: 'Shield'
+  },
+  standard: {
+    totalPrice: 15000,
+    minDownpayment: 2499,
+    minMonths: 3,
+    maxMonths: 17,
+    label: 'Standard',
+    color: 'green',
+    icon: 'Star'
+  },
+  premium: {
+    totalPrice: 50000,
+    minDownpayment: 15000,
+    minMonths: 3,
+    maxMonths: 12,
+    label: 'Premium',
+    color: 'violet',
+    icon: 'Crown'
+  },
+}
+
+const newPlan = ref<'basic' | 'standard' | 'premium'>('basic')
+const newDownpayment = ref<number>(PLAN_CONFIG.basic.minDownpayment)
+const newPaymentMonths = ref<number>(PLAN_CONFIG.basic.minMonths)
+
+const selectedPlanConfig = computed(() => PLAN_CONFIG[newPlan.value])
+
+// Month options for dropdown
+const monthOptions = computed(() => {
+  const { minMonths, maxMonths } = selectedPlanConfig.value
+  const options = []
+  for (let i = minMonths; i <= maxMonths; i++) {
+    options.push(i)
+  }
+  return options
+})
+
+// Switch plan and reset downpayment & months to new defaults
+const switchPlan = (plan: 'basic' | 'standard' | 'premium') => {
+  newPlan.value = plan
+  const config = PLAN_CONFIG[plan]
+  newDownpayment.value = config.minDownpayment
+  newPaymentMonths.value = config.minMonths || 0
+}
+
+const resetForm = () => {
+  newFullName.value = ''
+  newStationName.value = ''
+  newEmail.value = ''
+  newPassword.value = ''
+  newLocation.value = ''
+  newPlan.value = 'basic'
+  newDownpayment.value = PLAN_CONFIG.basic.minDownpayment
+  newPaymentMonths.value = PLAN_CONFIG.basic.minMonths
+  createError.value = ''
+  createSuccess.value = ''
+  showPassword.value = false
+}
+
+const openModal = () => { resetForm(); showCreateModal.value = true }
+const closeModal = () => { showCreateModal.value = false; resetForm() }
+
+const fetchUsers = async () => {
+  loading.value = true
+
+  // 1. Fetch profiles
+  const { data: profiles } = await client
+    .from('profiles')
+    .select('id, full_name, station_name, email, role, plan, location, created_at, subscription_status, next_payment_date')
+    .eq('role', 'user')
+    .order('created_at', { ascending: false })
+    .returns<Profile[]>()
+
+  if (!profiles) {
+    loading.value = false
+    return
+  }
+
+  // 2. Fetch subscriptions for these users (to get monthly_due, payment_months)
+  const userIds = profiles.map(p => p.id)
+  const { data: subscriptions } = await client
+    .from('subscriptions')
+    .select('user_id, monthly_due, payment_months')
+    .in('user_id', userIds)
+    .returns<SubscriptionData[]>()
+
+  const subMap: Record<string, { monthly_due: number | null; payment_months: number | null }> = {}
+  if (subscriptions) {
+    for (const sub of subscriptions) {
+      subMap[sub.user_id] = {
+        monthly_due: sub.monthly_due,
+        payment_months: sub.payment_months
+      }
+    }
+  }
+
+  // 3. Fetch transactions for sales totals
+  const { data: transactions } = await client
+    .from('transactions')
+    .select('user_id, quantity, total_amount')
+    .eq('status', 'completed')
+    .returns<Transaction[]>()
+
+  const totalsMap: Record<string, { sales: number; gallons: number }> = {}
+  if (transactions) {
+    for (const t of transactions) {
+      if (!totalsMap[t.user_id]) totalsMap[t.user_id] = { sales: 0, gallons: 0 }
+      totalsMap[t.user_id]!.sales += Number(t.total_amount)
+      totalsMap[t.user_id]!.gallons += Number(t.quantity)
+    }
+  }
+
+  // Merge
+  users.value = profiles.map(p => {
+    const sub = subMap[p.id] || { monthly_due: null, payment_months: null }
+    return {
+      ...p,
+      total_sales: totalsMap[p.id]?.sales ?? 0,
+      total_gallons: totalsMap[p.id]?.gallons ?? 0,
+      monthly_due: sub.monthly_due,
+      payment_months: sub.payment_months,
+    }
+  })
+
+  loading.value = false
+}
+
+const createUser = async () => {
+  if (!newEmail.value || !newPassword.value || !newStationName.value || !newLocation.value) {
+    createError.value = 'Please fill in all required fields.'
+    return
+  }
+
+  const config = PLAN_CONFIG[newPlan.value]
+  if (newDownpayment.value < config.minDownpayment) {
+    createError.value = `Minimum downpayment for ${config.label} is ₱${config.minDownpayment.toLocaleString()}`
+    return
+  }
+  if (newPaymentMonths.value < config.minMonths || newPaymentMonths.value > config.maxMonths) {
+    createError.value = `Payment months must be between ${config.minMonths} and ${config.maxMonths}`
+    return
+  }
+
+  creating.value = true
+  createError.value = ''
+  createSuccess.value = ''
+
+  const today = new Date()
+  const subscriptionStart = today.toLocaleDateString('en-CA')
+
+  try {
+    await $fetch('/api/create-user', {
+      method: 'POST',
+      body: {
+        email: newEmail.value,
+        password: newPassword.value,
+        fullName: newFullName.value,
+        stationName: newStationName.value,
+        location: newLocation.value,
+        subscriptionStart,
+        plan: newPlan.value,
+        downpayment: newDownpayment.value,
+        paymentMonths: newPaymentMonths.value,
+      }
+    })
+
+    createSuccess.value = `Account for ${newStationName.value} created successfully!`
+    creating.value = false
+
+    setTimeout(async () => {
+      await fetchUsers()
+      closeModal()
+    }, 1500)
+  } catch (err: any) {
+    createError.value = err.data?.message || err.message || 'Failed to create user'
+    creating.value = false
+  }
+}
+
+const renewSubscription = async (userId: string) => {
+  const user = users.value.find(u => u.id === userId)
+  let baseDate = new Date()
+
+  if (user?.next_payment_date) {
+    baseDate = new Date(user.next_payment_date + 'T00:00:00')
+    if (baseDate < new Date()) baseDate = new Date()
+  }
+
+  baseDate.setMonth(baseDate.getMonth() + 1)
+  const newDate = baseDate.toLocaleDateString('en-CA')
+
+  await (client.from('profiles') as any)
+    .update({
+      next_payment_date: newDate,
+      subscription_status: 'active',
+    })
+    .eq('id', userId)
+
+  await fetchUsers()
+}
+
+const confirmDelete = (id: string, name: string) => {
+  deletingId.value = id
+  deletingName.value = name
+  showDeleteModal.value = true
+}
+
+const deleteUser = async () => {
+  if (!deletingId.value) return
+  deleting.value = true
+
+  const { error } = await client.rpc('delete_user_by_id', { user_id: deletingId.value } as any)
+
+  if (error) { deleting.value = false; return }
+
+  users.value = users.value.filter(u => u.id !== deletingId.value)
+  showDeleteModal.value = false
+  deletingId.value = null
+  deletingName.value = ''
+  deleting.value = false
+}
+
+const cancelDelete = () => {
+  showDeleteModal.value = false
+  deletingId.value = null
+  deletingName.value = ''
+}
+
+const planBadgeClass = (plan: string) => {
+  if (plan === 'premium') return 'bg-violet-100 text-violet-700'
+  if (plan === 'standard') return 'bg-green-100 text-green-700'
+  return 'bg-blue-100 text-blue-700'
+}
+
+const getDaysRemaining = (nextPaymentDate: string | null) => {
+  if (!nextPaymentDate) return null
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const due = new Date(nextPaymentDate + 'T00:00:00')
+  return Math.ceil((due.getTime() - today.getTime()) / (1000 * 60 * 60 * 24))
+}
+
+const formatDate = (d: string) =>
+  new Date(d + 'T00:00:00').toLocaleDateString('en-PH', {
+    month: 'short', day: 'numeric', year: 'numeric'
+  })
+
+onMounted(() => fetchUsers())
+</script>
 
 <style scoped>
 .fade-enter-active, .fade-leave-active { transition: opacity 0.25s ease; }

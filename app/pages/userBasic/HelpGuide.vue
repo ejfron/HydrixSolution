@@ -298,7 +298,7 @@ const toggleSection = (id: string) => {
 <template>
   <div class="min-h-screen w-full bg-[#f5f7fb] flex">
     <Sidebar />
-    <main class="flex-1 min-w-0">
+    <main class="flex-1 min-w-0 pb-32 ">
       <Navbar />
 
       <div class="p-4 sm:p-8 space-y-6 w-full">
@@ -333,7 +333,7 @@ const toggleSection = (id: string) => {
           </div>
           <!-- Fade hint signals there are more chips to scroll to on narrow
                screens, since scrollbar-hide removes the usual scrollbar cue. -->
-          <div class="absolute right-0 top-0 bottom-1 w-8 bg-gradient-to-l from-[#f5f7fb] to-transparent pointer-events-none sm:hidden"></div>
+          <div class="absolute right-0 top-0 bottom-1 w-8 bg-linear-to-l from-[#f5f7fb] to-transparent pointer-events-none sm:hidden"></div>
         </div>
 
         <!-- Accordion -->
@@ -354,7 +354,7 @@ const toggleSection = (id: string) => {
                 </div>
                 <div class="min-w-0">
                   <p class="font-bold text-gray-700 text-sm sm:text-base">{{ s.label }}</p>
-                  <p class="text-slate-500 text-xs sm:text-sm break-words sm:truncate">{{ s.summary }}</p>
+                  <p class="text-slate-500 text-xs sm:text-sm wrap-break-word sm:truncate">{{ s.summary }}</p>
                 </div>
               </div>
               <ChevronDown
